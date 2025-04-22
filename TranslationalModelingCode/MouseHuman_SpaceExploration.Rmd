@@ -1,0 +1,1839 @@
+---
+title: "Translational Modeling of Space-Flight Mouse Models to Human Sarcopenia"
+author: "Brendan K. Ball"
+date: "2025-04-22"
+output: html_document
+---
+
+# 0. IMPORT PACKAGES
+```{r Package Import, include=FALSE, warning=FALSE}
+# Downloads and calls from the library the necessary packages needed to run the code
+# CRAN
+if(!require(stringr)) install.packages("stringr", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (stringr, verbose = FALSE))
+if(!require(gtools)) install.packages("gtools", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (gtools, verbose = FALSE))
+if(!require(dplyr)) install.packages("dplyr", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (dplyr, verbose = FALSE))
+if(!require(factoextra)) install.packages("factoextra", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (factoextra, verbose = FALSE))
+if(!require(devtools)) install.packages("devtools", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (devtools, verbose = FALSE))
+if(!require(data.table)) install.packages("data.table", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (data.table, verbose = FALSE))
+if(!require(tibble)) install.packages("tibble", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (tibble, verbose = FALSE))
+if(!require(lme4)) install.packages("lme4", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (lme4, verbose = FALSE))
+if(!require(emmeans)) install.packages("emmeans", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (emmeans, verbose = FALSE))
+if(!require(effects)) install.packages("effects", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (effects, verbose = FALSE))
+if(!require(ggforce)) install.packages("ggforce", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (ggforce, verbose = FALSE))
+if(!require(pheatmap)) install.packages("pheatmap", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (pheatmap, verbose = FALSE))
+if(!require(limma)) install.packages("limma", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (limma, verbose = FALSE))
+if(!require(umap)) install.packages("umap", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (umap, verbose = FALSE))
+if(!require(powerjoin)) install.packages("powerjoin", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (powerjoin, verbose = FALSE))
+if(!require(purrr)) install.packages("purrr", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (purrr, verbose = FALSE))
+if(!require(glmnet)) install.packages("glmnet", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (glmnet, verbose = FALSE))
+if(!require(tidyverse)) install.packages("tidyverse", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (tidyverse, verbose = FALSE))
+if(!require(dittoSeq)) install.packages("dittoSeq", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (dittoSeq, verbose = FALSE))
+if(!require(openxlsx)) install.packages("openxlsx", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (openxlsx, verbose = FALSE))
+if(!require(qusage)) install.packages("qusage", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (qusage, verbose = FALSE))
+if(!require(ggpubr)) install.packages("ggpubr", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (ggpubr, verbose = FALSE))
+if(!require(umap)) install.packages("umap", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (umap, verbose = FALSE))
+if(!require(corrplot)) install.packages("corrplot", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (corrplot, verbose = FALSE))
+# Bioconductor Import
+if (!requireNamespace('BiocManager', quietly = TRUE)) install.packages('BiocManager')
+suppressWarnings(library(BiocManager, verbose = FALSE))
+if (!require("fgsea")) {BiocManager::install("fgsea")}
+suppressWarnings(library (fgsea, verbose = FALSE))
+if (!require("mixOmics")) {BiocManager::install("mixOmics")}
+suppressWarnings(library (mixOmics, verbose = FALSE))
+if (!require("clusterProfiler")) {BiocManager::install("clusterProfiler")}
+suppressWarnings(library (clusterProfiler, verbose = FALSE))
+if (!require("EnrichmentBrowser")) {BiocManager::install("EnrichmentBrowser")}
+suppressWarnings(library (EnrichmentBrowser, verbose = FALSE))
+if (!require("EnhancedVolcano")) {BiocManager::install("EnhancedVolcano")}
+suppressWarnings(library (EnhancedVolcano, verbose = FALSE))
+if (!require("GEOquery")) {BiocManager::install("GEOquery")}
+suppressWarnings(library (GEOquery, verbose = FALSE))
+if (!require("orthogene")) {BiocManager::install("orthogene")}
+suppressWarnings(library (orthogene, verbose = FALSE))
+if (!require("msigdbr")) {BiocManager::install("msigdbr")}
+suppressWarnings(library (msigdbr, verbose = FALSE))
+if(!require(org.Hs.eg.db)) install.packages("org.Hs.eg.db", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (org.Hs.eg.db, verbose = FALSE))
+```
+
+# 1. IMPORT DATA SETS
+```{r Z-Score Calculation Function}
+# Function to calculate z-score for a vector
+calc_z_score <- function(x) {
+  (x - mean(x)) / sd(x)
+}
+```
+
+```{r Human Caucasian Cohort from GEO - GSE111006}
+# Version info: R 4.2.2, Biobase 2.58.0, GEOquery 2.66.0, limma 3.54.0
+# load counts table from GEO
+urld <- "https://www.ncbi.nlm.nih.gov/geo/download/?format=file&type=rnaseq_counts"
+path <- paste(urld, "acc=GSE111006", "file=GSE111006_raw_counts_GRCh38.p13_NCBI.tsv.gz", sep="&");
+tbl <- as.matrix(data.table::fread(path, header=T, colClasses="integer"), rownames=1)
+
+# pre-filter low count genes
+# keep genes with at least 2 counts > 10
+keep <- rowSums( tbl >= 10 ) >= 2
+tbl <- tbl[keep, ]
+
+# log transform raw counts
+GSE111006raw <- tbl
+# Compute the log2+1 transformation
+GSE111006log2 <- log2(GSE111006raw + 1)
+GSE111006log2 <- as.matrix(GSE111006log2)
+# Z-score normalization
+GSE111006norm <- GSE111006log2
+# Loop through each column and apply the z-score transformation
+for (i in 1:nrow(GSE111006norm)) {
+  GSE111006norm[i,] <- calc_z_score(GSE111006norm[i,])
+}
+GSE111006norm <- as.data.frame(GSE111006norm)
+
+# Gene Annotation 
+GeneConv <- read.csv("GeneAnnotation.csv")
+GeneConv <- GeneConv[c(1,2)]
+GeneConv <- as.data.frame(GeneConv)
+GeneConv$GeneID <- as.character(GeneConv$GeneID)
+
+# Prepare the gene row name to be transferred to the human data frames
+GSE111006_row_name_human <- rownames(GSE111006norm)
+GSE111006_human_names <- cbind(GSE111006_row_name_human, GSE111006norm)
+# Make standard geneID column name for df joining
+colnames(GSE111006_human_names)[1] <- "GeneID"
+# Combine the mut_human_names file into the Gene data conversion to create a gene list 
+GSE111006_human_gene <- GeneConv %>% inner_join(GSE111006_human_names, by = 'GeneID', copy = TRUE)
+# Remove the old GeneID list
+GSE111006_human_gene <- GSE111006_human_gene[, !(names(GSE111006_human_gene) %in% "GeneID")]
+# Rename the second column Symbol to geneID
+colnames(GSE111006_human_gene)[1] <- "GeneID"
+
+# Finalize data
+GSE111006dat <- column_to_rownames(GSE111006_human_gene, var = "GeneID")
+
+# Import GSE111006 SubjectID Information
+GSE111006_subjectID <- read.csv("GSE111006_SubjectID.csv")
+```
+
+```{r Human Afro-Carribbean Cohort from GEO - GSE111010}
+# Version info: R 4.2.2, Biobase 2.58.0, GEOquery 2.66.0, limma 3.54.0
+# load counts table from GEO
+urld <- "https://www.ncbi.nlm.nih.gov/geo/download/?format=file&type=rnaseq_counts"
+path <- paste(urld, "acc=GSE111010", "file=GSE111010_raw_counts_GRCh38.p13_NCBI.tsv.gz", sep="&");
+tbl <- as.matrix(data.table::fread(path, header=T, colClasses="integer"), rownames="GeneID")
+
+# pre-filter low count genes
+# keep genes with at least 2 counts > 10
+keep <- rowSums( tbl >= 10 ) >= 2
+tbl <- tbl[keep, ]
+
+# log transform raw counts
+GSE111010raw <- tbl
+# Compute the log2+1 transformation
+GSE111010log2 <- log2(GSE111010raw + 1)
+GSE111010log2 <- as.matrix(GSE111010log2)
+# Z-score normalization
+GSE111010norm <- GSE111010log2
+# Loop through each column and apply the z-score transformation
+for (i in 1:nrow(GSE111010norm)) {
+  GSE111010norm[i,] <- calc_z_score(GSE111010norm[i,])
+}
+GSE111010norm <- as.data.frame(GSE111010norm)
+
+# Gene Annotation 
+GeneConv <- read.csv("GeneAnnotation.csv")
+GeneConv <- GeneConv[c(1,2)]
+GeneConv <- as.data.frame(GeneConv)
+GeneConv$GeneID <- as.character(GeneConv$GeneID)
+
+# Prepare the gene row name to be transferred to the human data frames
+GSE111010_row_name_human <- rownames(GSE111010norm)
+GSE111010_human_names <- cbind(GSE111010_row_name_human, GSE111010norm)
+# Make standard geneID column name for df joining
+colnames(GSE111010_human_names)[1] <- "GeneID"
+# Combine the mut_human_names file into the Gene data conversion to create a gene list 
+GSE111010_human_gene <- GeneConv %>% inner_join(GSE111010_human_names, by = 'GeneID', copy = TRUE)
+# Remove the old GeneID list
+GSE111010_human_gene <- GSE111010_human_gene[, !(names(GSE111010_human_gene) %in% "GeneID")]
+# Rename the second column Symbol to geneID
+colnames(GSE111010_human_gene)[1] <- "GeneID"
+
+# Finalize data
+GSE111010dat <- column_to_rownames(GSE111010_human_gene, var = "GeneID")
+
+# Import GSE111010 SubjectID Information
+GSE111010_subjectID <- read.csv("GSE111010_SubjectID.csv")
+```
+
+```{r Human Chinese Cohort from GEO - GSE111016}
+# Version info: R 4.2.2, Biobase 2.58.0, GEOquery 2.66.0, limma 3.54.0
+# load counts table from GEO
+urld <- "https://www.ncbi.nlm.nih.gov/geo/download/?format=file&type=rnaseq_counts"
+path <- paste(urld, "acc=GSE111016", "file=GSE111016_raw_counts_GRCh38.p13_NCBI.tsv.gz", sep="&");
+tbl <- as.matrix(data.table::fread(path, header=T, colClasses="integer"), rownames=1)
+
+# pre-filter low count genes
+# keep genes with at least 2 counts > 10
+keep <- rowSums( tbl >= 10 ) >= 2
+tbl <- tbl[keep, ]
+
+# log transform raw counts
+GSE111016raw <- tbl
+# Compute the log2+1 transformation
+GSE111016log2 <- log2(GSE111016raw + 1)
+GSE111016log2 <- as.matrix(GSE111016log2)
+# Z-score normalization
+GSE111016norm <- GSE111016log2
+# Loop through each column and apply the z-score transformation
+for (i in 1:nrow(GSE111016norm)) {
+  GSE111016norm[i,] <- calc_z_score(GSE111016norm[i,])
+}
+GSE111016norm <- as.data.frame(GSE111016norm)
+
+# Gene Annotation 
+GeneConv <- read.csv("GeneAnnotation.csv")
+GeneConv <- GeneConv[c(1,2)]
+GeneConv <- as.data.frame(GeneConv)
+GeneConv$GeneID <- as.character(GeneConv$GeneID)
+
+# Prepare the gene row name to be transferred to the human data frames
+GSE111016_row_name_human <- rownames(GSE111016norm)
+GSE111016_human_names <- cbind(GSE111016_row_name_human, GSE111016norm)
+# Make standard geneID column name for df joining
+colnames(GSE111016_human_names)[1] <- "GeneID"
+# Combine the mut_human_names file into the Gene data conversion to create a gene list 
+GSE111016_human_gene <- GeneConv %>% inner_join(GSE111016_human_names, by = 'GeneID', copy = TRUE)
+# Remove the old GeneID list
+GSE111016_human_gene <- GSE111016_human_gene[, !(names(GSE111016_human_gene) %in% "GeneID")]
+# Rename the second column Symbol to geneID
+colnames(GSE111016_human_gene)[1] <- "GeneID"
+
+# Finalize data
+GSE111016dat <- column_to_rownames(GSE111016_human_gene, var = "GeneID")
+
+# Import GSE111016 SubjectID Information
+GSE111016_subjectID <- read.csv("GSE111016_SubjectID.csv")
+```
+
+```{r OSD-103 Mouse Dataset from NASA}
+# Import OSD-103 from Open Science NASA
+mousedat_unnorm <- read.csv("GLDS-103_rna_seq_Unnormalized_Counts.csv", row.names = 1)
+tbl <- as.matrix(mousedat_unnorm)
+
+# pre-filter low count genes
+# keep genes with at least 2 counts > 10
+keep <- rowSums( tbl >= 10 ) >= 2
+tbl <- tbl[keep, ]
+
+# log transform raw counts
+mousedatraw <- tbl
+# Compute the log2+1 transformation
+mousedatlog2 <- log2(mousedatraw + 1)
+mousedatlog2 <- as.matrix(mousedatlog2)
+# Z-score normalization
+mousedatnorm <- mousedatlog2
+# Loop through each column and apply the z-score transformation
+for (i in 1:nrow(mousedatnorm)) {
+  mousedatnorm[i,] <- calc_z_score(mousedatnorm[i,])
+}
+mousedatnorm <- as.data.frame(mousedatnorm)
+```
+
+# 2. DATA WRANGLING & PROCESSING
+## 2.1 Orthologous Pairs Matching & Gene List
+```{r Match Gene Pairs of Mouse and Human}
+# GENE MATCHING PREPARATION FOR HUMAN DATA
+# Prepare transpose of dataset for human
+GSE111006_proc_t <- t(GSE111006dat)
+# Convert to data frame
+GSE111006_proc_t <- as.data.frame(GSE111006_proc_t)
+# Confirm all gene words are upper case for case sensitive intersection
+names(GSE111006_proc_t) <- toupper(names(GSE111006_proc_t))
+
+# Prepare transpose of dataset for mouse
+mousedat_proc_t <- t(mousedatnorm)
+# Convert to data frame
+mousedat_proc_t <- as.data.frame(mousedat_proc_t)
+
+# GENE MATCHING PREPARATION FOR MOUSE DATA
+# Orthologous pair matching using orthogene package
+# Filter and process orthologous pairs between mouse and human
+gene_mouse_df <- t(mousedat_proc_t)
+# Filter for the gene ortholog pairs between mouse and human, drop all that are not pairs
+mousedat_ortholog <- orthogene::convert_orthologs(gene_df = gene_mouse_df,
+                                        gene_input = "rownames", 
+                                        gene_output = "rownames", 
+                                        input_species = "mouse",
+                                        output_species = "human",
+                                        non121_strategy = "drop_both_species") 
+# Transpose again and prepare the processed mouse data set
+mousedat_proc_t <- t(mousedat_ortholog)
+# Convert data sets to a data frame
+mousedat_proc_t <- as.data.frame(mousedat_proc_t)
+# Confirm all gene words are upper case for case sensitive intersection
+names(mousedat_proc_t) <- toupper(names(mousedat_proc_t))
+
+# GSE111010
+# Prepare transpose of dataset for human
+GSE111010_proc_t <- t(GSE111010dat)
+# Convert to data frame
+GSE111010_proc_t <- as.data.frame(GSE111010_proc_t)
+# Confirm all gene words are upper case for case sensitive intersection
+names(GSE111010_proc_t) <- toupper(names(GSE111010_proc_t))
+
+# GSE111016
+# Prepare transpose of dataset for human
+GSE111016_proc_t <- t(GSE111016dat)
+# Convert to data frame
+GSE111016_proc_t <- as.data.frame(GSE111016_proc_t)
+# Confirm all gene words are upper case for case sensitive intersection
+names(GSE111016_proc_t) <- toupper(names(GSE111016_proc_t))
+
+# Check for NAs
+mousedat_proc_t <- mousedat_proc_t[, colSums(is.na(mousedat_proc_t)) == 0]
+GSE111006_proc_t <- GSE111006_proc_t[, colSums(is.na(GSE111006_proc_t)) == 0]
+GSE111010_proc_t <- GSE111010_proc_t[, colSums(is.na(GSE111010_proc_t)) == 0]
+GSE111016_proc_t <- GSE111016_proc_t[, colSums(is.na(GSE111016_proc_t)) == 0]
+
+# INTERSECTION OF GENES ACROSS MOUSE & HUMAN DATA
+# Only save data that has genes that intersect between the humans and mouse data 3-way
+col_extracted <- intersect(colnames(mousedat_proc_t), colnames(GSE111006_proc_t))
+col_extracted2 <- intersect(col_extracted, colnames(GSE111010_proc_t))
+col_extracted3 <- intersect(col_extracted2, colnames(GSE111016_proc_t))
+
+# Define the mouse and human genes that are crossed together for matching
+GSE111006_proc_int <- GSE111006_proc_t[,col_extracted3]
+GSE111010_proc_int <- GSE111010_proc_t[,col_extracted3]
+GSE111016_proc_int <- GSE111016_proc_t[,col_extracted3]
+mousedat_proc_int <- mousedat_proc_t[,col_extracted3]
+```
+
+## 2.2 Subject Information into the Data
+```{r Attaching Subject Information for GSE111006}
+# SUBJECT INFORMATION WITH HUMAN DATA FOR Xh GSE111006
+# Human Data Combination
+# Move the row names to be in the first column
+GSE111006_proc_int <- as.data.frame(GSE111006_proc_int)
+GSE111006_proc_int <- tibble::rownames_to_column(GSE111006_proc_int)
+colnames(GSE111006_proc_int)[1] <- "SampleID"
+# Pull out essential information from subject data
+GSE111006_subjectID <- as.data.frame(GSE111006_subjectID )
+GSE111006_subjectID <- GSE111006_subjectID %>% dplyr::select(c(2, 5, 6, 7, 8, 10))
+# Rename columns
+colnames(GSE111006_subjectID)[1] <- "SampleID"
+colnames(GSE111006_subjectID)[2] <- "Population"
+colnames(GSE111006_subjectID)[3] <- "Condition"
+colnames(GSE111006_subjectID)[6] <- "Age"
+# Replace Condition String with SA or C (SA=Sarcopenia, C=Control)
+GSE111006_subjectID$Condition[GSE111006_subjectID$Condition == 'yes'] <- 'SA'
+GSE111006_subjectID$Condition[GSE111006_subjectID$Condition == 'no'] <- 'C'
+# Replace yes = 1, no = 0 for low muscle mass condition
+GSE111006_subjectID$Low.muscle.mass <- ifelse(GSE111006_subjectID$Low.muscle.mass == "yes", 1,
+                                       ifelse(GSE111006_subjectID$Low.muscle.mass == "no", 0, NA))
+GSE111006_subjectID$Low.muscle.mass <- as.numeric(GSE111006_subjectID$Low.muscle.mass)
+# Replace yes = 1, no = 0 for Low.muscle.strength.and.or.low.physical.performance
+GSE111006_subjectID$Low.muscle.strength.and.or.low.physical.performance <-
+  ifelse(GSE111006_subjectID$Low.muscle.strength.and.or.low.physical.performance == "yes", 1,
+  ifelse(GSE111006_subjectID$Low.muscle.strength.and.or.low.physical.performance == "no", 0, NA))
+GSE111006_subjectID$Low.muscle.strength.and.or.low.physical.performance <-
+  as.numeric(GSE111006_subjectID$Low.muscle.strength.and.or.low.physical.performance)
+# Make Age column numeric without the label
+GSE111006_subjectID$Age <- gsub("age \\(yr\\): ", "", GSE111006_subjectID$Age)
+GSE111006_subjectID$Age <- as.numeric(GSE111006_subjectID$Age)
+
+# Combine the subjectID and human data to create the X_GSE dataset
+X_GSE111006 <- merge(GSE111006_subjectID, GSE111006_proc_int, by = "SampleID")
+```
+
+```{r Attaching Subject Information for GSE111010}
+# SUBJECT INFORMATION WITH HUMAN DATA FOR Xh GSE111010
+# Human Data Combination
+# Move the row names to be in the first column
+GSE111010_proc_int <- as.data.frame(GSE111010_proc_int)
+GSE111010_proc_int <- tibble::rownames_to_column(GSE111010_proc_int)
+colnames(GSE111010_proc_int)[1] <- "SampleID"
+# Pull out essential information from subject data
+GSE111010_subjectID <- as.data.frame(GSE111010_subjectID )
+GSE111010_subjectID <- GSE111010_subjectID %>% dplyr::select(c(2, 5, 6, 7, 8, 10))
+# Rename columns
+colnames(GSE111010_subjectID)[1] <- "SampleID"
+colnames(GSE111010_subjectID)[2] <- "Population"
+colnames(GSE111010_subjectID)[3] <- "Condition"
+colnames(GSE111010_subjectID)[6] <- "Age"
+# Replace Condition String with SA or C (SA=Sarcopenia, C=Control)
+GSE111010_subjectID$Condition[GSE111010_subjectID$Condition == 'yes'] <- 'SA'
+GSE111010_subjectID$Condition[GSE111010_subjectID$Condition == 'no'] <- 'C'
+# Replace yes = 1, no = 0 for low muscle mass condition
+GSE111010_subjectID$Low.muscle.mass <- ifelse(GSE111010_subjectID$Low.muscle.mass == "yes", 1,
+                                       ifelse(GSE111010_subjectID$Low.muscle.mass == "no", 0, NA))
+GSE111010_subjectID$Low.muscle.mass <- as.numeric(GSE111010_subjectID$Low.muscle.mass)
+# Replace yes = 1, no = 0 for Low.muscle.strength.and.or.low.physical.performance
+GSE111010_subjectID$Low.muscle.strength.and.or.low.physical.performance <-
+  ifelse(GSE111010_subjectID$Low.muscle.strength.and.or.low.physical.performance == "yes", 1,
+  ifelse(GSE111010_subjectID$Low.muscle.strength.and.or.low.physical.performance == "no", 0, NA))
+GSE111010_subjectID$Low.muscle.strength.and.or.low.physical.performance <-
+  as.numeric(GSE111010_subjectID$Low.muscle.strength.and.or.low.physical.performance)
+# Make Age column numeric without the label
+GSE111010_subjectID$Age <- gsub("age \\(yr\\): ", "", GSE111010_subjectID$Age)
+GSE111010_subjectID$Age <- as.numeric(GSE111010_subjectID$Age)
+
+# Combine the subjectID and human data to create the X_GSE dataset
+X_GSE111010 <- merge(GSE111010_subjectID, GSE111010_proc_int, by = "SampleID")
+```
+
+```{r Attaching Subject Information for GSE111016}
+# SUBJECT INFORMATION WITH HUMAN DATA FOR Xh GSE111016
+# Human Data Combination
+# Move the row names to be in the first column
+GSE111016_proc_int <- as.data.frame(GSE111016_proc_int)
+GSE111016_proc_int <- tibble::rownames_to_column(GSE111016_proc_int)
+colnames(GSE111016_proc_int)[1] <- "SampleID"
+# Pull out essential information from subject data
+GSE111016_subjectID <- as.data.frame(GSE111016_subjectID )
+GSE111016_subjectID <- GSE111016_subjectID %>% dplyr::select(c(2, 5, 6, 8))
+# Rename columns
+colnames(GSE111016_subjectID)[1] <- "SampleID"
+colnames(GSE111016_subjectID)[2] <- "Population"
+colnames(GSE111016_subjectID)[3] <- "Condition"
+colnames(GSE111016_subjectID)[4] <- "Age"
+# Replace Condition String with SA or C (SA=Sarcopenia, C=Control)
+GSE111016_subjectID$Condition[GSE111016_subjectID$Condition == 'yes'] <- 'SA'
+GSE111016_subjectID$Condition[GSE111016_subjectID$Condition == 'no'] <- 'C'
+# Make Age column numeric without the label
+GSE111016_subjectID$Age <- gsub("age \\(yr\\): ", "", GSE111016_subjectID$Age)
+GSE111016_subjectID$Age <- as.numeric(GSE111016_subjectID$Age)
+
+# Combine the subjectID and human data to create the X_GSE dataset
+X_GSE111016 <- merge(GSE111016_subjectID, GSE111016_proc_int, by = "SampleID")
+```
+
+```{r Conditions for OSD-103 Mouse Dataset from NASA}
+# Define the flight and ground control groups
+mousedat_label <- tibble::rownames_to_column(mousedat_proc_int)
+colnames(mousedat_label)[1] <- "Condition"
+mousedat_label$Condition[1:6] <- "FLT"
+mousedat_label$Condition[7:12] <- "GC"
+# Relabel the variable
+X_mousedat <- mousedat_label
+```
+
+```{r Save the Processed Data}
+#write.csv(X_GSE111006, "X_GSE111006.csv", row.names = FALSE)
+#write.csv(X_GSE111010, "X_GSE111010.csv", row.names = FALSE)
+#write.csv(X_GSE111016, "X_GSE111016.csv", row.names = FALSE)
+#write.csv(X_mousedat, "X_mousedat.csv", row.names = FALSE)
+```
+
+```{r Demographic Information for Human}
+# GSE111006
+# Separate subset of the Xhumandat for only demographic information
+X006_demographics <- X_GSE111006[,c(1:6)]
+# Create data frame for AD group and Control group
+X006_demo_SA <- X006_demographics[X006_demographics$Condition %in% "SA",]
+X006_demo_C <- X006_demographics[X006_demographics$Condition %in% "C",]
+# Count demographic information for SA
+# Calculate mean and standard deviation of the age for SA group
+age_006_SA <- X006_demo_SA %>% summarise(
+                                            mean_age = mean(Age, na.rm = TRUE),
+                                            sd_age = sd(Age, na.rm = TRUE)
+                                           )
+# Calculate mean and standard deviation of the age for Control group
+age_006_C <- X006_demo_C %>% summarise(
+                                            mean_age = mean(Age, na.rm = TRUE),
+                                            sd_age = sd(Age, na.rm = TRUE)
+                                           )
+
+# GSE111010
+# Separate subset of the Xhumandat for only demographic information
+X010_demographics <- X_GSE111010[,c(1:6)]
+# Create data frame for AD group and Control group
+X010_demo_SA <- X010_demographics[X010_demographics$Condition %in% "SA",]
+X010_demo_C <- X010_demographics[X010_demographics$Condition %in% "C",]
+# Count demographic information for SA
+# Calculate mean and standard deviation of the age for SA group
+age_010_SA <- X010_demo_SA %>% summarise(
+                                            mean_age = mean(Age, na.rm = TRUE),
+                                            sd_age = sd(Age, na.rm = TRUE)
+                                           )
+# Calculate mean and standard deviation of the age for Control group
+age_010_C <- X010_demo_C %>% summarise(
+                                            mean_age = mean(Age, na.rm = TRUE),
+                                            sd_age = sd(Age, na.rm = TRUE)
+                                           )
+
+# GSE111016
+# Separate subset of the Xhumandat for only demographic information
+X016_demographics <- X_GSE111016[,c(1:6)]
+# Create data frame for AD group and Control group
+X016_demo_SA <- X016_demographics[X016_demographics$Condition %in% "SA",]
+X016_demo_C <- X016_demographics[X016_demographics$Condition %in% "C",]
+# Count demographic information for SA
+# Calculate mean and standard deviation of the age for SA group
+age_016_SA <- X016_demo_SA %>% summarise(
+                                            mean_age = mean(Age, na.rm = TRUE),
+                                            sd_age = sd(Age, na.rm = TRUE)
+                                           )
+# Calculate mean and standard deviation of the age for Control group
+age_016_C <- X016_demo_C %>% summarise(
+                                            mean_age = mean(Age, na.rm = TRUE),
+                                            sd_age = sd(Age, na.rm = TRUE)
+                                           )
+```
+
+# 3. DATA VISUALIZATION 
+## 3.1 Plotting the PCA Charts for Mouse AD Dataset
+```{r PCA of Mouse Dataset}
+# PCA OF THE MOUSE DATASET
+# Data frame for the PCA
+Xmouse_pca <- X_mousedat
+# Prepare the principal components
+Xmouse_pr <- prcomp(Xmouse_pca[c(2:ncol(Xmouse_pca))], center = TRUE, scale = FALSE)
+
+# Extract summary information including percentage of variance explained
+summary_info <- summary(Xmouse_pr)
+# Extract percentage of variance explained for each principal component
+var_exp_mouse <- summary_info$importance[2, ]*100
+# Extract principal component scores
+pcs <- as.data.frame(Xmouse_pr$x)
+# Create a data frame with PC1 and PC2 scores
+pca_df_mouse <- data.frame(PC1 = pcs[,1], PC2 = pcs[,2])
+
+# Establish Color for PCA Chart
+colors <- c("#d73027", "#4575b4")
+# Combine the PCs and the respective disease conditions
+pca_df_mouse <- cbind(pca_df_mouse, Xmouse_pca$Condition)
+colnames(pca_df_mouse)[3] <- "Condition"
+pca_df_mouse$Condition <- as.factor(pca_df_mouse$Condition)
+
+#svg('MousePCA.svg', width = 5, height = 4)
+# Plot the PCA Chart 
+ggplot(pca_df_mouse, aes(x = PC1, y = PC2, fill = Condition)) +
+  geom_point(shape = 21, size = 2, color = "black") + 
+  scale_fill_manual(values = colors) +  # Set manual color scale
+ labs(x = paste0("PC1 (", round(var_exp_mouse[1], 1), "%)"), 
+      y = paste0("PC2 (", round(var_exp_mouse[2], 1), "%)"),
+      color = "Condition") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "black") +
+  scale_color_manual(values = colors) +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        aspect.ratio = 1)
+#dev.off()
+```
+
+## 3.3 Plotting the PCA Charts for the Human Data Set
+```{r PCA of Human Data}
+# PCA OF THE HUMAN DATA
+# Data frame for the PCA
+X016_pca <- X_GSE111016
+# Prepare the principal components
+X016_pr <- prcomp(X016_pca[c(5:ncol(X016_pca))], center = TRUE, scale = FALSE)
+
+# Extract summary information including percentage of variance explained
+summary_info <- summary(X016_pr)
+# Extract percentage of variance explained for each principal component
+var_exp_016 <- summary_info$importance[2, ]*100
+# Extract principal component scores
+pcs <- as.data.frame(X016_pr$x)
+# Create a data frame with PC1 and PC2 scores
+pca_df_016 <- data.frame(PC1 = pcs[,1], PC2 = pcs[,2])
+
+# Establish Color for PCA Chart
+colors <- c("#d73027", "#4575b4")
+# Combine the PCs and the respective disease conditions
+pca_df_016 <- cbind(pca_df_016, X016_pca$Condition)
+colnames(pca_df_016)[3] <- "Condition"
+pca_df_016$Condition <- as.factor(pca_df_016$Condition)
+
+#svg('016PCA.svg', width = 5, height = 4)
+# Plot the PCA Chart 
+ggplot(pca_df_016, aes(x = PC1, y = PC2, fill = Condition)) +
+  geom_point(shape = 21, size = 2, color = "black") + 
+  scale_fill_manual(values = colors) +  # Set manual color scale
+ labs(x = paste0("PC1 (", round(var_exp_016[1], 1), "%)"), 
+       y = paste0("PC2 (", round(var_exp_016[2], 1), "%)"),
+       color = "Condition") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "black") +
+  scale_color_manual(values = colors) +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        aspect.ratio = 1)
+#dev.off()
+```
+
+# 4 CROSS-SPECIES MODELING
+## 4.1 Cumulative Variance Plot for Mouse PCs
+### 4.1.1 Variance Explained
+```{r Filtering AD PCs to 80% Explained Variance}
+# Q_mouse data matrix preparation 
+# Remove the identifiers and keep the genes based on each mouse data
+XmousedatTCR <- X_mousedat[c(2:ncol(X_mousedat))]
+# Take the transpose of the data frame
+XmousedatTCR_t <- t(XmousedatTCR)
+# Reset as a data frame
+XmousedatTCR_t <- as.data.frame(XmousedatTCR_t)
+# Move the row names into the first column
+XmousedatTCR_t <- tibble::rownames_to_column(XmousedatTCR_t)
+colnames(XmousedatTCR_t)[1] <- "GeneID"
+# Prepare the principal component analysis
+mouse_Qm_pr <- prcomp(XmousedatTCR_t[c(2:(ncol(XmousedatTCR_t)))], center = TRUE, scale = FALSE)
+
+# Prepare the Scree Plot for Mouse Data
+screeplot(mouse_Qm_pr, type = "l", npcs = 10, main = "Scree Plot of the 10PCs")
+abline(h = 1, col="red", lty=20)
+legend("topright", legend=c("Eigenvalue = 1"),
+       col=c("red"), lty=5, cex=0.6)
+#svg('CumVarPlot_blood12.svg', width = 4, height = 4)
+# Cumulative Variance Plot for 80% Variance
+cumVar <- cumsum(mouse_Qm_pr$sdev^2 / sum(mouse_Qm_pr$sdev^2))
+plot(cumVar[0:10], xlab = "Principle Component #", ylab = "Amount of Explained Variance", main = "Cumulative Variance Plot")
+abline(v = 7, col="blue", lty=5)
+abline(h = 0.80, col="blue", lty=5)
+legend("bottomright", legend=c("Cut-off @ PC9"),
+       col=c("blue"), lty=5, cex=0.6)
+#dev.off()
+# Using the which() command to determine the PC# greater than or equal to 80%
+print(c("Princial components at 80% variance is:", which(cumVar >= 0.80)[1]))
+PC_80_val <- as.numeric(which(cumVar >= 0.80)[1])
+
+# Collect the PCs of the mouse data set
+Q_mouse <- mouse_Qm_pr$x
+# Extract PC1 to PCs that represent 80% explained variability
+Q_mouse <-  Q_mouse[, c(1:PC_80_val)]
+
+# Keep row names as the gene identifiers
+rownames(Q_mouse) <- XmousedatTCR_t$GeneID
+# Preparation of the mouse matrix
+Q_mouse<- as.matrix(Q_mouse)
+# Rename the columns for the AD Q_mouse
+colnames(Q_mouse)[1] <- "PC1"
+colnames(Q_mouse)[2] <- "PC2"
+colnames(Q_mouse)[3] <- "PC3"
+colnames(Q_mouse)[4] <- "PC4"
+colnames(Q_mouse)[5] <- "PC5"
+colnames(Q_mouse)[6] <- "PC6"
+colnames(Q_mouse)[7] <- "PC7"
+```
+
+```{r Percent Variance Explained Plots, fig.width=4, fig.height=4}
+# Move the row names to be in the first column
+CumVarMousePCs <- as.data.frame(cumVar)
+CumVarMousePCs <- tibble::rownames_to_column(CumVarMousePCs)
+colnames(CumVarMousePCs)[1] <- "PC"
+# Combine the other data sets 
+CumVarMousePCs <- cbind(CumVarMousePCs, cumVar)
+# Rename the column for the different mouse groups
+colnames(CumVarMousePCs)[2] <- "CumVar"
+# Multiply by 100 to get into percent
+CumVarMousePCs[, 2] <- CumVarMousePCs[, 2] * 100
+CumVarMousePCs$PC <- as.numeric(CumVarMousePCs$PC)
+
+# Percent variance explained plot
+ggplot(CumVarMousePCs, aes(x=PC, y=CumVar)) +
+  geom_point(stat="identity", fill="#d73027", color = "black") +
+  ylab("Percent Variance Explained") +
+   coord_cartesian(ylim = c(0, 100)) +
+  scale_x_continuous(limits = c(0, 12), breaks = 1:12) +
+  theme_classic() + scale_y_continuous(expand = expansion(mult = c(0, 0.01)))+
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())
+```
+
+## 4.2 Translatable Components Regressiom (TransComp-R)
+```{r TransComp-R Model}
+# X_human data matrix preparation
+# Remove the identifiers and keep the genes based on each mouse data
+Xhuman_TCR <- X_GSE111016[c(5:ncol(X_GSE111016))]
+# Rename the row names as the subject ID
+rownames(Xhuman_TCR) <- X_GSE111016$SampleID
+# Convert the X_human data into a matrix form
+X_human <- as.matrix(Xhuman_TCR)
+
+# Matrix multiplication of the human and mouse data set
+Pm_h <- X_human %*% Q_mouse
+# Make the mouse-human matrix into a data frame
+Pm_h_DF <- as.data.frame(Pm_h)
+# Move the row names into the first column
+Pm_h_DF <- tibble::rownames_to_column(Pm_h_DF)
+colnames(Pm_h_DF)[1] <- "SampleID"
+# Make the Mouse to human TransComp-R data with human demographic information
+Mouse_Human_TCR <- X_GSE111016[c(1:4)] %>% inner_join(Pm_h_DF, by = 'SampleID', copy = TRUE)
+
+# Rename the condition categories into numerical values for the regression analysis
+Mouse_Human_TCR_reg <- Mouse_Human_TCR %>%
+  mutate(Condition = case_when(
+    Condition == "SA" ~ 1,  # Replace "SA" with 1
+    Condition == "C" ~ 0,  # Replace "C" with 0
+  ))
+```
+
+# 5 LASSO Variable Selection
+## 5.1 Model Training
+```{r Cross Validaition}
+set.seed(12345)
+# Number of repeats
+num_repeats <- 20
+# Initialize list to store coefficients
+coefs_list <- list()
+
+# Repeat the process
+for (i in 1:num_repeats) {
+    # Define response variable
+    y <- Mouse_Human_TCR_reg$Condition
+    # Define matrix of predictor variables
+    x <- data.matrix(Mouse_Human_TCR_reg[c(5:ncol(Mouse_Human_TCR_reg))])
+    # Perform 5-fold cross-validation to find optimal lambda value
+    cv_model <- cv.glmnet(x, y, alpha = 1, grouped = FALSE, family = "binomial", type.measure = "class", nfolds = 5, maxit = 1000000)
+    # Find optimal lambda value that minimizes test MSE
+    best_lambda <- cv_model$lambda.min
+    #cat(sprintf("Repeat %d: The lambda value is: %f\n", i, best_lambda))
+    # Find coefficients of best model
+    best_model <- glmnet(x, y, alpha = 1, lambda = best_lambda, nfolds = 5, family = "binomial", type.measure = "class", maxit = 1000000)
+    # Store coefficients for each repetition of the model
+    coefs_list[[i]] <- as.vector(coef(best_model))
+}
+
+# Convert coefficients list to data frame
+coefs_lasso <- as.data.frame(do.call(cbind, coefs_list))
+# Replace the column name to represent each iteration re-run of the LASSO model
+colnames(coefs_lasso) <- sub("^V", "Iter", colnames(coefs_lasso))
+# Count non-zero coefficients in each row
+coefs_lasso$non_zero_count <- rowSums(coefs_lasso != 0)
+# Mark as TRUE in a new column if greater than 9 non-zero counts
+coefs_lasso$variable_selection <- coefs_lasso$non_zero_count >9
+# Include row names of the coefficients
+rownames(coefs_lasso) <- c("Intercept", colnames(x))
+# Pull out the count for number of non-zero coefficients
+count_lasso <- coefs_lasso[c("non_zero_count","variable_selection")]
+# Move the row names to be in the first column
+count_lasso <- tibble::rownames_to_column(count_lasso)
+colnames(count_lasso)[1] <- "Variables"
+
+# Reorder the row names
+desired_order <- c("PC1", "PC2", "PC3", "PC4", "PC5", "PC6", "PC7")
+count_lasso$Variables <- factor(count_lasso$Variables, levels = count_lasso$Var)
+
+# Remove the intercept from the bar graph
+count_lasso_plot <- count_lasso[-1, ]
+# Create color vector based on variable_selection
+colors <- ifelse(count_lasso$variable_selection == TRUE, "#7D7D7D","orange")
+
+# Create the bar plot
+#svg('LASSO_plot.svg', width = 4, height = 4)
+ggplot(count_lasso_plot, aes(x = reorder(Variables, -match(Variables, desired_order)), y = non_zero_count, fill = variable_selection)) +
+  geom_bar(stat = "identity", color = "black", linewidth = 0.2) +
+  scale_fill_manual(values = colors) +
+  labs(x = "Variables",
+       y = "Non-Zero Count") +
+  theme(axis.text.y = element_text(size = 12)) +
+  coord_flip() + theme_classic() + geom_hline(yintercept = 10, linetype = "dashed", color = "black") +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.01)))  # Adjust the limits of y-axis
+#dev.off()
+```
+
+## 5.2 Linear Regression Modeling
+```{r Linear Modeling Results}
+# Model with all of the principal components in a regression model
+model_list <- glm(Condition ~ PC2 + PC3 + PC4 + PC6, data = Mouse_Human_TCR_reg, family = binomial, maxit=100)
+summary(model_list)
+```
+
+## 5.3 Plots of Selected Mouse PCs From TransComp-R
+```{r PC3 and PC4}
+#svg('PC4PC3_plot.svg', width = 4, height = 4)
+# Create ggplot of the different PCs from TransComp-R
+g2 <- ggplot(Mouse_Human_TCR_reg, aes(x = PC3, y = PC4, color = Condition)) + 
+  geom_point(size = 1.5) +
+  scale_color_manual(values = c("#4575b4","#d73027")) +
+  theme(legend.position = 'right') +
+  coord_equal() 
+
+# Factorize the Condition (AD vs Control)
+g2$data$Condition <- as.factor(g2$data$Condition)
+
+# Plot the figure
+g2 +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "black") +
+  theme_bw() +
+  theme(
+    panel.grid.major = element_blank(),  # Remove major gridlines
+    panel.grid.minor = element_blank(),
+    aspect.ratio = 1 # Remove minor gridlines
+  )
+#dev.off()
+```
+
+```{r PC6 and PC4}
+#svg('PC6PC4_plot.svg', width = 4, height = 4)
+# Create ggplot of the different PCs from TransComp-R
+g2 <- ggplot(Mouse_Human_TCR_reg, aes(x = PC4, y = PC6, color = Condition)) + 
+  geom_point(size = 1.5) +
+  scale_color_manual(values = c("#4575b4","#d73027")) +
+  theme(legend.position = 'right') +
+  coord_equal() 
+
+# Factorize the Condition (AD vs Control)
+g2$data$Condition <- as.factor(g2$data$Condition)
+
+# Plot the figure
+g2 +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "black") +
+  theme_bw() +
+  theme(
+    panel.grid.major = element_blank(),  # Remove major gridlines
+    panel.grid.minor = element_blank(),
+    aspect.ratio = 1 # Remove minor gridlines
+  )
+#dev.off()
+```
+
+```{r PC6 and PC3}
+#svg('PC3PC6_plot.svg', width = 4, height = 4)
+# Create ggplot of the different PCs from TransComp-R
+g2 <- ggplot(Mouse_Human_TCR_reg, aes(x = PC6, y = PC3, color = Condition)) + 
+  geom_point(size = 1.5) +
+  scale_color_manual(values = c("#4575b4","#d73027")) +
+  theme(legend.position = 'right') +
+  coord_equal() 
+
+# Factorize the Condition (AD vs Control)
+g2$data$Condition <- as.factor(g2$data$Condition)
+
+# Plot the figure
+g2 +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "black") +
+  theme_bw() +
+  theme(
+    panel.grid.major = element_blank(),  # Remove major gridlines
+    panel.grid.minor = element_blank(),
+    aspect.ratio = 1 # Remove minor gridlines
+  )
+#dev.off()
+```
+
+## 5.7 Variance Explained of Mouse in Human Data Scatter Plots
+```{r Mouse Variance Explained in Human}
+# Isolate for the human dataset
+human_data_matrix <- X_GSE111016[,-c(1:4)]
+rownames(human_data_matrix) <- X_GSE111016$SampleID
+# Ensure all values are numeric
+for (col in names(human_data_matrix)) {
+  human_data_matrix[[col]] <- as.numeric(human_data_matrix[[col]])
+}
+# Convert back to matrix format
+human_data_matrix <- as.matrix(human_data_matrix)
+
+# Calculation
+# Get mouse feature loadings from principal component analysis
+mouse_loading <- as.matrix(mouse_Qm_pr$x)
+rownames(mouse_loading) <- rownames(Q_mouse)
+# Ensure all values are numeric
+for (col in names(mouse_loading)) {
+  mouse_loading[[col]] <- as.numeric(mouse_loading[[col]])
+}
+# Convert back to matrix
+mouse_loading <- as.matrix(mouse_loading)
+# Calculate explained variance of mouse in human
+var_mh <- lapply(1:ncol(mouse_loading), function(x) (t(mouse_loading[,x])%*%t(human_data_matrix)%*%human_data_matrix%*%mouse_loading[,x])/(sum(diag(t(mouse_loading)%*%t(human_data_matrix)%*%human_data_matrix%*%mouse_loading))))
+
+# Plotting the variance explained
+# Prepare data for the variance explained from mouse in human
+variance_MouseInHuman <- data.frame(variance = unlist(var_mh))
+variance_MouseInHuman <- head(variance_MouseInHuman, 12)
+variance_MouseInHuman <- variance_MouseInHuman*100
+# Select the 5 PCs in the Mouse
+var_exp_016 <- head(var_exp_016, 12)
+# Prepare Labels for the 12 PCs
+PC <- c("PC1", "PC2", "PC3", "PC4", "PC5", "PC6", "PC7", "PC8", "PC9", "PC10", "PC11", "PC12")
+# Prepare the dataframe
+var_exp <- cbind(PC, var_exp_016, variance_MouseInHuman)
+colnames(var_exp)[1] <- "PC"
+colnames(var_exp)[2] <- "Mouse"
+colnames(var_exp)[3] <- "MouseInHuman"
+
+# Keep only the 7 used for the analysis, drop the remaining 5. All PCs are needed to get accurate calculations with the var exp in human by mouse
+var_exp <- var_exp[1:7, ]
+
+#svg('MouseHumanVarExp_Plot.svg', width = 4, height = 4)
+# Plot of the  variance explained for the PCs
+ggplot(var_exp, aes(x = Mouse, y = MouseInHuman)) +
+  geom_point(color = "black", size = 2) +  # Change point color and size
+  labs(title = NULL,
+       x = "Percent Variance Explained in Mouse",
+       y = "Percent Variance Explained of Mouse in Human") +
+  theme_bw() + theme(panel.grid=element_blank(), aspect.ratio = 1) + 
+  scale_x_continuous(expand = c(0, 0), limits = c(0,80)) +
+  scale_y_continuous(expand = c(0, 0), limits = c(0,80)) +
+  geom_abline(intercept = 0, slope = 1, linetype = "dotted", color = "black", linewidth = 0.2)
+#dev.off()
+
+#svg('MouseHumanVarExp_Zoom.svg', width = 4, height = 4)
+# Plot of the variance explained for the PCs
+ggplot(var_exp, aes(x = Mouse, y = MouseInHuman)) +
+  geom_point(color = "black", size = 2) +  # Change point color and size
+  labs(title = NULL,
+       x = "Percent Variance Explained in Mouse",
+       y = "Percent Variance Explained of Mouse in Human") +
+  theme_bw() + theme(panel.grid=element_blank(), aspect.ratio = 1) + 
+  scale_x_continuous(expand = c(0, 0), limits = c(0,5)) +
+  scale_y_continuous(expand = c(0, 0), limits = c(0,5)) +
+  geom_abline(intercept = 0, slope = 1, linetype = "dotted", color = "black", linewidth = 0.2)
+#dev.off()
+```
+
+# 6 GENE SET ENRICHMENT ANALYSIS
+## 6.1 GSEA KEGG
+```{r GENE SET ENRICHMENT ANALYSIS - KEGG PATHWAY}
+# SET THE DESIRED ORGANISM HERE
+organism <- "org.Hs.eg.db"
+# Prepare the dataset to be used for GSEA (KEGG)
+hs_KEGG_sets <- msigdbr(species = "Homo sapiens",
+                        category = "C2", subcategory = "CP:KEGG"
+                       )
+
+# Move the row names to be in the first column
+Q_mouse_GSE <- as.data.frame(Q_mouse)
+Q_mouse_GSE <- tibble::rownames_to_column(Q_mouse_GSE)
+colnames(Q_mouse_GSE)[1] <- "genelist"
+# Prepare a list of PC column names that will be used in the for loop
+pc_columns <- grep("PC", colnames(Q_mouse_GSE), value = TRUE)
+# Create an empty list to store GSEA results for each PC
+gsea_results_list <- list()
+
+# GSEA Analysis - For Loop for All PCs
+for (pc_col in pc_columns) {
+  # Extract gene list for each of the current PC through the for loop
+  gene_list <- Q_mouse_GSE[, c("genelist", pc_col)]
+  # Sort gene list by values of the loading scores
+  gene_list <- gene_list %>% arrange(desc(!!sym(pc_col)))
+  # Extract PC values for GSEA analysis
+  pc_gene_list <- gene_list[[pc_col]]
+  names(pc_gene_list) <- gene_list$genelist
+  # Run the GSEA analysis
+  gsea_results <- GSEA(
+    geneList = pc_gene_list,
+    minGSSize = 5,
+    maxGSSize = 500,
+    pvalueCutoff = 0.8, # Higher cutoff for visualization, but not all used
+    eps = 0,
+    seed = TRUE,
+    pAdjustMethod = "BH", # Benjamini-Hochberg correction factor
+    TERM2GENE = dplyr::select(hs_KEGG_sets, gs_name, gene_symbol)
+  )
+  # Store GSEA results in the list
+  gsea_results_list[[pc_col]] <- data.frame(gsea_results@result)
+}
+# Save for kegg pathway
+kegg_gsea_results_list <- gsea_results_list
+# Save the GSEA File 
+#write.xlsx(kegg_gsea_results_list, "GSEA_KEGG_mouse-to-human.xlsx")
+```
+
+```{r KEGG Results PC3, fig.height=6}
+# PC3 KEGG 
+#svg('PC3_KEGG.svg', width = 8, height = 8)
+# Select the PC3 GSEA results
+PC3_KEGG <- kegg_gsea_results_list$PC3
+# Remove the Data Below FDR of 0.01 (0.01 is considered the level of significance)
+PC3_KEGG  <- PC3_KEGG [with(PC3_KEGG , !((p.adjust >= 0.01))), ]
+Proc_PC3_KEGG <- PC3_KEGG %>% mutate(sign = NES <= 0)
+
+# Adjust the positions on the bar chart to display bars from lowest NES value to largest value
+arranged_position <- arrange(Proc_PC3_KEGG, desc(NES))
+# Pull out the positions for the enrichment plot
+positions <- arranged_position$Description
+
+# Creating the horizontal bar plots
+ggplot(Proc_PC3_KEGG) +
+  geom_col(aes(x = NES, y = Description, fill=sign), colour = "black", width = 0.9, alpha = 1) + 
+  ylab(NULL) + xlab("Normalized Enrichment Score") + theme_minimal() + 
+  theme(legend.position = "none", text=element_text(color="black", size = 2), 
+        axis.text = element_text(color = "black", size=10)) + theme_classic() + 
+geom_vline(xintercept = 0, color = "black", linetype = "solid", linewidth = 1.5) +
+  xlim(c(-4.5,4.5)) + scale_y_discrete(limits = positions) + scale_fill_manual(values = c("royalblue", "royalblue"))
+#dev.off()
+```
+
+```{r Gene Contribution to KEGG}
+#svg('PC3_KEGGcontribution.svg', width = 8, height = 8)
+#ggsave("PC3_KEGGcontribution.png", width = 8, height = 8)
+ggplot(Proc_PC3_KEGG, aes(x = "Pathways", y = reorder(Description, -NES), fill = setSize)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient(
+    low = "white", high = "black",
+    limits = c(0, 300),
+    name = "Set Size"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.title.x = element_blank(),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.title.y = element_blank(),
+    axis.text.y = element_text(size = 10),
+    legend.position = "right"
+  )
+#dev.off()
+```
+
+```{r KEGG Results PC4, fig.height=6}
+# PC4 KEGG 
+#svg('PC4_KEGG.svg', width = 8, height = 8)
+# Select the PC4 GSEA results
+PC4_KEGG <- kegg_gsea_results_list$PC4
+# Remove the Data Below FDR of 0.01 (0.01 is considered the level of significance)
+PC4_KEGG  <- PC4_KEGG [with(PC4_KEGG , !((p.adjust >= 0.01))), ]
+Proc_PC4_KEGG <- PC4_KEGG %>% mutate(sign = NES <= 0)
+
+# Adjust the positions on the bar chart to display bars from lowest NES value to largest value
+arranged_position <- arrange(Proc_PC4_KEGG, desc(NES))
+# Pull out the positions for the enrichment plot
+positions <- arranged_position$Description
+
+# Creating the horizontal bar plots
+ggplot(Proc_PC4_KEGG) +
+  geom_col(aes(x = NES, y = Description, fill=sign), colour = "black", width = 0.9, alpha = 1) + 
+  ylab(NULL) + xlab("Normalized Enrichment Score") + theme_minimal() + 
+  theme(legend.position = "none", text=element_text(color="black", size = 2), 
+        axis.text = element_text(color = "black", size=10)) + theme_classic() + 
+geom_vline(xintercept = 0, color = "black", linetype = "solid", linewidth = 1.5) +
+  xlim(c(-4.5,4.5)) + scale_y_discrete(limits = positions) + scale_fill_manual(values = c("royalblue", "royalblue"))
+#dev.off()
+```
+
+```{r Gene Contribution to KEGG}
+#svg('PC4_KEGGcontribution.svg', width = 8, height = 8)
+ggsave("PC4_KEGGcontribution.png", width = 8, height = 8)
+ggplot(Proc_PC4_KEGG, aes(x = "Pathways", y = reorder(Description, -NES), fill = setSize)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient(
+    low = "white", high = "black",
+    limits = c(0, 300),
+    name = "Set Size"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.title.x = element_blank(),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.title.y = element_blank(),
+    axis.text.y = element_text(size = 10),
+    legend.position = "right"
+  )
+#dev.off()
+```
+
+```{r KEGG Results PC6, fig.height=6}
+# PC6 KEGG 
+#svg('PC6_KEGG.svg', width = 8, height = 8)
+# Select the PC6 GSEA results
+PC6_KEGG <- kegg_gsea_results_list$PC6
+# Remove the Data Below FDR of 0.01 (0.01 is considered the level of significance)
+PC6_KEGG  <- PC6_KEGG [with(PC6_KEGG , !((p.adjust >= 0.01))), ]
+Proc_PC6_KEGG <- PC6_KEGG %>% mutate(sign = NES <= 0)
+
+# Adjust the positions on the bar chart to display bars from lowest NES value to largest value
+arranged_position <- arrange(Proc_PC6_KEGG, desc(NES))
+# Pull out the positions for the enrichment plot
+positions <- arranged_position$Description
+
+# Creating the horizontal bar plots
+ggplot(Proc_PC6_KEGG) +
+  geom_col(aes(x = NES, y = Description, fill=sign), colour = "black", width = 0.9, alpha = 1) + 
+  ylab(NULL) + xlab("Normalized Enrichment Score") + theme_minimal() + 
+  theme(legend.position = "none", text=element_text(color="black", size = 2), 
+        axis.text = element_text(color = "black", size=10)) + theme_classic() + 
+geom_vline(xintercept = 0, color = "black", linetype = "solid", linewidth = 1.5) +
+  xlim(c(-4.5,4.5)) + scale_y_discrete(limits = positions) + scale_fill_manual(values = c("royalblue", "royalblue"))
+#dev.off()
+```
+
+```{r Gene Contribution to KEGG}
+#svg('PC6_KEGGcontribution.svg', width = 8, height = 8)
+#ggsave("PC6_KEGGcontribution.png", width = 8, height = 8)
+ggplot(Proc_PC6_KEGG, aes(x = "Pathways", y = reorder(Description, -NES), fill = setSize)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient(
+    low = "white", high = "black",
+    limits = c(0, 300),
+    name = "Set Size"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.title.x = element_blank(),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.title.y = element_blank(),
+    axis.text.y = element_text(size = 10),
+    legend.position = "right"
+  )
+#dev.off()
+```
+
+## 6.2 GSEA HALLMARK
+```{r GENE SET ENRICHMENT ANALYSIS - HALLMARK PATHWAY}
+# SET THE DESIRED ORGANISM HERE
+organism <- "org.Hs.eg.db"
+# Prepare the dataset to be used for GSEA (HALLMARK)
+hs_HALLMARK_sets <- msigdbr(species = "Homo sapiens",
+                        category = "H"
+                       )
+
+# Move the row names to be in the first column
+Q_mouse_GSE <- as.data.frame(Q_mouse)
+Q_mouse_GSE <- tibble::rownames_to_column(Q_mouse_GSE)
+colnames(Q_mouse_GSE)[1] <- "genelist"
+# Prepare a list of PC column names that will be used in the for loop
+pc_columns <- grep("PC", colnames(Q_mouse_GSE), value = TRUE)
+# Create an empty list to store GSEA results for each PC
+gsea_results_list <- list()
+
+# GSEA Analysis - For Loop for All PCs
+for (pc_col in pc_columns) {
+  # Extract gene list for each of the current PC through the for loop
+  gene_list <- Q_mouse_GSE[, c("genelist", pc_col)]
+  # Sort gene list by values of the loading scores
+  gene_list <- gene_list %>% arrange(desc(!!sym(pc_col)))
+  # Extract PC values for GSEA analysis
+  pc_gene_list <- gene_list[[pc_col]]
+  names(pc_gene_list) <- gene_list$genelist
+  # Run the GSEA analysis
+  gsea_results <- GSEA(
+    geneList = pc_gene_list,
+    minGSSize = 5,
+    maxGSSize = 500,
+    pvalueCutoff = 0.8, # Higher cutoff for visualization, but not all used
+    eps = 0,
+    seed = TRUE,
+    pAdjustMethod = "BH", # Benjamini-Hochberg correction factor
+    TERM2GENE = dplyr::select(hs_HALLMARK_sets, gs_name, gene_symbol)
+  )
+  # Store GSEA results in the list
+  gsea_results_list[[pc_col]] <- data.frame(gsea_results@result)
+}
+# Save for hallmark list
+hallmark_gsea_results_list <- gsea_results_list
+# Save the GSEA File 
+#write.xlsx(hallmark_gsea_results_list, "GSEA_HALLMARK_mouse-to-human.xlsx")
+```
+
+```{r Hallmark Results PC3, fig.height=6}
+# PC3 Hallmark 
+#svg('PC3_Hallmark.svg', width = 8, height = 8)
+# Select the PC3 GSEA results
+PC3_Hallmark <- hallmark_gsea_results_list$PC3
+# Remove the Data Below FDR of 0.01 (0.01 is considered the level of significance)
+PC3_Hallmark  <- PC3_Hallmark [with(PC3_Hallmark , !((p.adjust >= 0.01))), ]
+Proc_PC3_Hallmark <- PC3_Hallmark %>% mutate(sign = NES <= 0)
+
+# Adjust the positions on the bar chart to display bars from lowest NES value to largest value
+arranged_position <- arrange(Proc_PC3_Hallmark, desc(NES))
+# Pull out the positions for the enrichment plot
+positions <- arranged_position$Description
+
+# Creating the horizontal bar plots
+ggplot(Proc_PC3_Hallmark) +
+  geom_col(aes(x = NES, y = Description, fill=sign), colour = "black", width = 0.9, alpha = 1) + 
+  ylab(NULL) + xlab("Normalized Enrichment Score") + theme_minimal() + 
+  theme(legend.position = "none", text=element_text(color="black", size = 2), 
+        axis.text = element_text(color = "black", size=10)) + theme_classic() + 
+geom_vline(xintercept = 0, color = "black", linetype = "solid", linewidth = 1.5) +
+  xlim(c(-4.5,4.5)) + scale_y_discrete(limits = positions) + scale_fill_manual(values = c("royalblue", "royalblue"))
+#dev.off()
+```
+
+```{r Gene Contribution to Hallmark}
+#svg('PC3_Hallmarkcontribution.svg', width = 8, height = 8)
+#ggsave("PC3_Hallmarkcontribution.png", width = 8, height = 8)
+ggplot(Proc_PC3_Hallmark, aes(x = "Pathways", y = reorder(Description, -NES), fill = setSize)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient(
+    low = "white", high = "black",
+    limits = c(0, 300),
+    name = "Set Size"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.title.x = element_blank(),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.title.y = element_blank(),
+    axis.text.y = element_text(size = 10),
+    legend.position = "right"
+  )
+#dev.off()
+```
+
+```{r Hallmark Results PC4, fig.height=6}
+# PC4 Hallmark 
+#svg('PC4_Hallmark.svg', width = 8, height = 8)
+# Select the PC4 GSEA results
+PC4_Hallmark <- hallmark_gsea_results_list$PC4
+# Remove the Data Below FDR of 0.01 (0.01 is considered the level of significance)
+PC4_Hallmark  <- PC4_Hallmark [with(PC4_Hallmark , !((p.adjust >= 0.01))), ]
+Proc_PC4_Hallmark <- PC4_Hallmark %>% mutate(sign = NES <= 0)
+
+# Adjust the positions on the bar chart to display bars from lowest NES value to largest value
+arranged_position <- arrange(Proc_PC4_Hallmark, desc(NES))
+# Pull out the positions for the enrichment plot
+positions <- arranged_position$Description
+
+# Creating the horizontal bar plots
+ggplot(Proc_PC4_Hallmark) +
+  geom_col(aes(x = NES, y = Description, fill=sign), colour = "black", width = 0.9, alpha = 1) + 
+  ylab(NULL) + xlab("Normalized Enrichment Score") + theme_minimal() + 
+  theme(legend.position = "none", text=element_text(color="black", size = 2), 
+        axis.text = element_text(color = "black", size=10)) + theme_classic() + 
+geom_vline(xintercept = 0, color = "black", linetype = "solid", linewidth = 1.5) +
+  xlim(c(-4.5,4.5)) + scale_y_discrete(limits = positions) + scale_fill_manual(values = c("royalblue", "royalblue"))
+#dev.off()
+```
+
+```{r Gene Contribution to Hallmark}
+#svg('PC4_Hallmarkcontribution.svg', width = 8, height = 8)
+#ggsave("PC4_Hallmarkcontribution.png", width = 8, height = 8)
+ggplot(Proc_PC4_Hallmark, aes(x = "Pathways", y = reorder(Description, -NES), fill = setSize)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient(
+    low = "white", high = "black",
+    limits = c(0, 300),
+    name = "Set Size"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.title.x = element_blank(),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.title.y = element_blank(),
+    axis.text.y = element_text(size = 10),
+    legend.position = "right"
+  )
+#dev.off()
+```
+
+```{r Hallmark Results PC6, fig.height=6}
+# PC6 Hallmark 
+#svg('PC6_Hallmark.svg', width = 8, height = 8)
+# Select the PC6 GSEA results
+PC6_Hallmark <- hallmark_gsea_results_list$PC6
+# Remove the Data Below FDR of 0.01 (0.01 is considered the level of significance)
+PC6_Hallmark  <- PC6_Hallmark [with(PC6_Hallmark , !((p.adjust >= 0.01))), ]
+Proc_PC6_Hallmark <- PC6_Hallmark %>% mutate(sign = NES <= 0)
+
+# Adjust the positions on the bar chart to display bars from lowest NES value to largest value
+arranged_position <- arrange(Proc_PC6_Hallmark, desc(NES))
+# Pull out the positions for the enrichment plot
+positions <- arranged_position$Description
+
+# Creating the horizontal bar plots
+ggplot(Proc_PC6_Hallmark) +
+  geom_col(aes(x = NES, y = Description, fill=sign), colour = "black", width = 0.9, alpha = 1) + 
+  ylab(NULL) + xlab("Normalized Enrichment Score") + theme_minimal() + 
+  theme(legend.position = "none", text=element_text(color="black", size = 2), 
+        axis.text = element_text(color = "black", size=10)) + theme_classic() + 
+geom_vline(xintercept = 0, color = "black", linetype = "solid", linewidth = 1.5) +
+  xlim(c(-4.5,4.5)) + scale_y_discrete(limits = positions) + scale_fill_manual(values = c("royalblue", "royalblue"))
+#dev.off()
+```
+
+```{r Gene Contribution to Hallmark}
+#svg('PC6_Hallmarkcontribution.svg', width = 8, height = 8)
+#ggsave("PC6_Hallmarkcontribution.png", width = 8, height = 8)
+ggplot(Proc_PC6_Hallmark, aes(x = "Pathways", y = reorder(Description, -NES), fill = setSize)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient(
+    low = "white", high = "black",
+    limits = c(0, 300),
+    name = "Set Size"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.title.x = element_blank(),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.title.y = element_blank(),
+    axis.text.y = element_text(size = 10),
+    legend.position = "right"
+  )
+#dev.off()
+```
+
+# 7 TOP & BOTTOM 10 GENES LOADING SCORES ON SELECTED PCs
+## 7.1 Filter Top and Bottom 10 for PC3
+```{r Top & Bottom 10 Genes Analysis on PC3}
+# Move the row names into the first column
+Q_mouse_topbotlist <- as.data.frame(Q_mouse)
+Q_mouse_topbotlist <- tibble::rownames_to_column(Q_mouse_topbotlist)
+colnames(Q_mouse_topbotlist)[1] <- "geneID"
+# Pull out only the Both_PC3 data 
+Q_mouse_topbotlist_PC3 <- Q_mouse_topbotlist[, c("geneID", "PC3")]
+# Sort the dataframe based on the values in the Both_PC3 column
+Q_mouse_PC3_sorted <- Q_mouse_topbotlist_PC3[order(Q_mouse_topbotlist_PC3$PC3), ]
+# Get the top 10 and bottom 10 genes
+PC3_top_10_genes <- Q_mouse_PC3_sorted[order(Q_mouse_PC3_sorted$PC3, decreasing = TRUE), ][1:10, ]
+PC3_bottom_10_genes <- Q_mouse_PC3_sorted[order(Q_mouse_PC3_sorted$PC3), ][1:10, ]
+# Combine the top and bottom 10 geneID values together
+topbot10_PC3 <- rbind(PC3_top_10_genes, PC3_bottom_10_genes)
+# Extract the gene IDs from topbot10_PC3
+PC3geneIDs <- topbot10_PC3$geneID
+```
+
+## 7.2 Filter Top and Bottom 10 for PC4
+```{r Top & Bottom 10 Genes Analysis on PC4}
+# Move the row names into the first column
+Q_mouse_topbotlist <- as.data.frame(Q_mouse)
+Q_mouse_topbotlist <- tibble::rownames_to_column(Q_mouse_topbotlist)
+colnames(Q_mouse_topbotlist)[1] <- "geneID"
+# Pull out only the PC4 data 
+Q_mouse_topbotlist_PC4 <- Q_mouse_topbotlist[, c("geneID", "PC4")]
+# Sort the dataframe based on the values in the PC4 column
+Q_mouse_PC4_sorted <- Q_mouse_topbotlist_PC4[order(Q_mouse_topbotlist_PC4$PC4), ]
+# Get the top 10 and bottom 10 genes
+PC4_top_10_genes <- Q_mouse_PC4_sorted[order(Q_mouse_PC4_sorted$PC4, decreasing = TRUE), ][1:10, ]
+PC4_bottom_10_genes <- Q_mouse_PC4_sorted[order(Q_mouse_PC4_sorted$PC4), ][1:10, ]
+# Combine the top and bottom 10 geneID values together
+topbot10_PC4 <- rbind(PC4_top_10_genes, PC4_bottom_10_genes)
+# Extract the gene IDs from topbot10_PC4
+PC4geneIDs <- topbot10_PC4$geneID
+```
+
+## 7.3 Filter Top and Bottom 10 for PC6
+```{r Top & Bottom 10 Genes Analysis on PC6}
+# Move the row names into the first column
+Q_mouse_topbotlist <- as.data.frame(Q_mouse)
+Q_mouse_topbotlist <- tibble::rownames_to_column(Q_mouse_topbotlist)
+colnames(Q_mouse_topbotlist)[1] <- "geneID"
+# Pull out only the PC6 data 
+Q_mouse_topbotlist_PC6 <- Q_mouse_topbotlist[, c("geneID", "PC6")]
+# Sort the dataframe based on the values in the PC6 column
+Q_mouse_PC6_sorted <- Q_mouse_topbotlist_PC6[order(Q_mouse_topbotlist_PC6$PC6), ]
+# Get the top 10 and bottom 10 genes
+PC6_top_10_genes <- Q_mouse_PC6_sorted[order(Q_mouse_PC6_sorted$PC6, decreasing = TRUE), ][1:10, ]
+PC6_bottom_10_genes <- Q_mouse_PC6_sorted[order(Q_mouse_PC6_sorted$PC6), ][1:10, ]
+# Combine the top and bottom 10 geneID values together
+topbot10_PC6 <- rbind(PC6_top_10_genes, PC6_bottom_10_genes)
+# Extract the gene IDs from topbot10_PC6
+PC6geneIDs <- topbot10_PC6$geneID
+```
+
+```{r PLS-DA Validation with Additional GEO Datasets}
+# Caucasian Group
+X_GSE111006_hm <- X_GSE111006 %>%
+  mutate(Condition = case_when(
+    Low.muscle.mass == 1 & Low.muscle.strength.and.or.low.physical.performance == 0 ~ "LMM",
+    Low.muscle.mass == 0 & Low.muscle.strength.and.or.low.physical.performance == 1 ~ "LMSLPP", TRUE ~ Condition  # Keep original value if (1,1) or (0,0)
+  ))
+
+# Afro-Caribbean Descent Group
+X_GSE111010_hm <- X_GSE111010 %>%
+  mutate(Condition = case_when(
+    Low.muscle.mass == 1 & Low.muscle.strength.and.or.low.physical.performance == 0 ~ "LMM",
+    Low.muscle.mass == 0 & Low.muscle.strength.and.or.low.physical.performance == 1 ~ "LMSLPP", TRUE ~ Condition  # Keep original value if (1,1) or (0,0)
+  ))
+
+# Select SA or C groups
+X_GSE111006_filt <- X_GSE111006_hm[grepl("C|SA", X_GSE111006_hm$Condition), ]
+# Order alphabetically
+X_GSE111006_filt <- X_GSE111006_filt[order(X_GSE111006_filt$Condition), ]
+rownames(X_GSE111006_filt) <- NULL
+# Add "batch" information
+X_GSE111006_filt <- X_GSE111006_filt %>%
+  mutate(Batch = NA) %>%
+  relocate(Batch, .after = SampleID)
+X_GSE111006_filt$Batch = "Group1"
+
+# Select SA or C groups
+X_GSE111010_filt <- X_GSE111010_hm[grepl("C|SA", X_GSE111010_hm$Condition), ]
+# Order alphabetically
+X_GSE111010_filt <- X_GSE111010_filt[order(X_GSE111010_filt$Condition), ]
+rownames(X_GSE111010_filt) <- NULL
+# Add "batch" information
+X_GSE111010_filt <- X_GSE111010_filt %>%
+  mutate(Batch = NA) %>%
+  relocate(Batch, .after = SampleID)
+X_GSE111010_filt$Batch = "Group2"
+
+# Combine data to a validation dataset
+X_valid <- rbind(X_GSE111006_filt, X_GSE111010_filt)
+```
+
+## 7.4 Verification of Batch Effects
+```{r PCA Plot to Verify Batch Effects}
+# Prepare the principal components
+prebatch_pr <- prcomp(X_valid[c(8:ncol(X_valid))], center = TRUE, scale = FALSE)
+
+#svg('PCA_uncorrected.svg', width = 4, height = 4)
+# Create PCA chart with coloring/grouping based on different rat groups
+g1 <- fviz_pca_ind(prebatch_pr, 
+                   label="none", 
+                   alpha.ind=1, 
+                   pointshape=19, 
+                   habillage=X_valid$Condition, 
+                   pointsize = 2, 
+                   repel = TRUE, 
+                   col.ind = "black", 
+                   invisible="quali",
+                   legend.title = "Disease Status",
+                   palette = c("#d73027","#4575b4"))
+g1 +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "black") +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(),  # Remove major gridlines
+        panel.grid.minor = element_blank(),   # Remove minor gridlines
+        aspect.ratio=1
+       )
+#dev.off()
+
+# Defining the batches based on variables from the prior data frame (defined ordering will differ from the below labeling)
+batch_label <- c(rep("Batch 1", 32), rep("Batch 2", 23))
+
+#svg('PCA_uncorrected_batch.svg', width = 4, height = 4)
+# Create PCA chart with coloring on rat batches
+g2 <- fviz_pca_ind(prebatch_pr, 
+                   label="none", 
+                   alpha.ind=1, 
+                   pointshape=19, 
+                   habillage=batch_label,
+                   pointsize = 2, 
+                   repel = TRUE, 
+                   col.ind = "black", 
+                   invisible="quali",
+                   legend.title = "Batch Group",
+                   palette = c("#253494","#a1dab4"))
+g2 +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "black") +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(),  # Remove major gridlines
+        panel.grid.minor = element_blank(),   # Remove minor gridlines
+        aspect.ratio=1
+       )
+#dev.off()
+```
+
+## 7.5 PLS-DA Modeling for PC3
+```{r PLS-DA Modeling on PC3}
+# Get the column names of the human data that match the gene IDs
+matching_columnsPC3 <- colnames(X_valid)[which(colnames(X_valid) %in% PC3geneIDs)]
+X_valid_PC3 <- cbind(X_valid[,c(1:7)], X_valid[, matching_columnsPC3])
+
+## Cross Validation to determine the number of components for the model
+# Separate data into the specific categories (Y, disease association) and (X, dataset from genes)
+Y_PC3 <- as.character(X_valid_PC3$Condition)
+X_PC3 <- X_valid_PC3[8:ncol(X_valid_PC3)]
+
+# Compute PLSDA for 10 components (noted as plsda_draft for multiple components)
+plsda_draft_PC3 <- plsda(X_PC3, Y_PC3, ncomp = 10)
+
+# Perform a 3-fold cross-validation repeated 10 times to evaluate classification performance
+# Noted as plsda_cv for the cross-validation analysis
+plsda_cv_PC3 <- perf(plsda_draft_PC3, validation = 'Mfold', folds = 3, 
+                  progressBar = FALSE,  # Set to TRUE to track progress
+                  nrepeat = 100)
+# Plot the balanced error rate (BER) and the overall error
+plot(plsda_cv_PC3, sd = TRUE, legend.position = 'horizontal')
+
+## Plot the PLS-DA Model
+# A two-way PLS-DA was performed with 2 components
+plsda_PC3 <- plsda(X_PC3, Y_PC3, ncomp = 2)
+
+#svg('PC3-PLSDA-human.svg', width = 4, height = 4)
+# PLS-DA with LV1 and LV2
+par(pty="s")
+plotIndiv(plsda_PC3, ind.names = FALSE, legend=FALSE,
+          comp=c(1,2), ellipse = FALSE, pch=16,
+          title = "",
+          size.title = 0.1,
+          size.legend = 0.5,
+          style="graphics",
+          cex = 1.0,
+          point.lwd = 1.5,
+          X.label = 'Scores on LV1', Y.label = 'Scores on LV2',
+          col = c("red3", "royalblue3"))
+          
+          abline(h=0, lty="dotted", col="black", lwd=2)
+          abline(v=0, lty="dotted", col="black", lwd=2)
+par(pty="m")
+#dev.off()
+```
+
+```{r Loading Variables and VIP Determination for PC3,  fig.height=5.2, fig.width=10}
+# Determine the VIP values for PC3-2way 
+plsda_PC3.vip <- vip(plsda_PC3)
+
+## Loadings for Latent Variable 1
+# Pull the loadings information
+loadingsPC3 <- as.data.frame(plsda_PC3[["loadings"]][["X"]])
+# Capture the rowname list
+rownamePC3 <- rownames(loadingsPC3)
+# Remove the old dataframe's row name
+rownames(loadingsPC3) <- NULL
+# Merge the row name (as a first column) with the other loadings
+loadingsPC3 <- cbind(rownamePC3, loadingsPC3)
+# Rename the first column to Gene
+colnames(loadingsPC3)[1] <- "Gene"
+
+# Specify the desired words in the desired order
+selected_words <- c("MANF", "LSAMP", "CLEC9A", "DIRAS1", "RAB21", "EEF1AKMT4", "PDZD8", "SYN1", "ITSN2", "COL6A6", "KIAA1614", "CHRNA1", "PDCD6", "PIBF1", "PPP1R12B", "CNTF", "DLG3", "CALB2", "LHFPL6", "ADAM33")
+
+# Rearrange the rows based on selected words
+loadingsPC3 <- loadingsPC3[match(selected_words, loadingsPC3$Gene, nomatch = 0), ]
+rownames(loadingsPC3) <- NULL
+
+# Preparing factor to establish the barplot positioning in the figure across all groups
+loadingsPC3$Gene <- factor(loadingsPC3$Gene,
+                  levels = c("ADAM33", "LHFPL6", "CALB2", "DLG3", "CNTF", "PPP1R12B", "PIBF1", "PDCD6", "CHRNA1", "KIAA1614", "COL6A6", "ITSN2", "SYN1", "PDZD8", "EEF1AKMT4", "RAB21", "DIRAS1", "CLEC9A", "LSAMP", "MANF"))
+
+# Plot loadings with each variable identified with highest contribution to a specific class
+plotLoadings(plsda_PC3, comp = 1, method = 'mean', contrib = 'max')
+
+#svg('PC3-PLSDA-LV1_loadings.svg', width = 4, height = 4)
+# Plot of loadings color adjusted with fixed cytokine list
+loadingsPC3 %>%
+        ggplot(aes(x = Gene, y = comp1, fill = Gene)) +
+            geom_bar(stat = "identity", color="black", show.legend = FALSE, width = 1) +
+            scale_fill_manual(values = c("red3", "red3", "red3", "red3", "royalblue3", "royalblue3", "red3", "red3", "red3", "red3", "red3", "red3", "royalblue3", "red3", "red3", "royalblue3", "red3", "royalblue3", "royalblue3", "royalblue3")) + 
+            coord_flip() + theme_classic() + labs(x=NULL, y="Loadings on LV1") +
+  theme(
+    panel.grid.major = element_blank(),  # Remove major gridlines
+    panel.grid.minor = element_blank()   # Remove minor gridlines
+  )
+#dev.off()
+
+## Loadings for Latent Variable 2
+# Pull the loadings information
+loadingsPC3 <- as.data.frame(plsda_PC3[["loadings"]][["X"]])
+# Capture the rowname list
+rownamePC3 <- rownames(loadingsPC3)
+# Remove the old dataframe's row name
+rownames(loadingsPC3) <- NULL
+# Merge the row name (as a first column) with the other loadings
+loadingsPC3 <- cbind(rownamePC3, loadingsPC3)
+# Rename the first column to Gene
+colnames(loadingsPC3)[1] <- "Gene"
+
+# Specify the desired words in the desired order
+selected_words <- c("DIRAS1", "CALB2", "EEF1AKMT4", "ADAM33", "LHFPL6", "PDCD6", "DLG3", "PIBF1", "PDZD8", "RAB21", "ITSN2", "CLEC9A", "SYN1", "CHRNA1", "COL6A6", "MANF", "LSAMP", "PPP1R12B", "KIAA1614", "CNTF")
+
+# Rearrange the rows based on selected words
+loadingsPC3 <- loadingsPC3[match(selected_words, loadingsPC3$Gene, nomatch = 0), ]
+rownames(loadingsPC3) <- NULL
+
+# Preparing factor to establish the barplot positioning in the figure across all groups
+loadingsPC3$Gene <- factor(loadingsPC3$Gene,
+                  levels = c("CNTF", "KIAA1614", "PPP1R12B", "LSAMP", "MANF", "COL6A6", "CHRNA1", "SYN1", "CLEC9A", "ITSN2", "RAB21", "PDZD8", "PIBF1", "DLG3", "PDCD6", "LHFPL6", "ADAM33", "EEF1AKMT4", "CALB2", "DIRAS1"))
+
+# Plot loadings with each variable identified with highest contribution to a specific class
+plotLoadings(plsda_PC3, comp = 2, method = 'mean', contrib = 'max')
+#svg('PC3-PLSDA-LV2_loadings.svg', width = 4, height = 4)
+# Plot of loadings color adjusted with fixed cytokine list
+loadingsPC3 %>%
+        ggplot(aes(x = Gene, y = comp2, fill = Gene)) +
+            geom_bar(stat = "identity", color="black", show.legend = FALSE, width = 1) +
+            scale_fill_manual(values = c("royalblue3", "red3", "royalblue3", "royalblue3", "royalblue3", "red3", "red3", "royalblue3", "royalblue3", "red3", "royalblue3", "red3", "red3", "red3", "red3", "red3", "red3", "red3", "red3", "red3")) + 
+            coord_flip() + theme_classic() + labs(x=NULL, y="Loadings on LV2") +
+  theme(
+    panel.grid.major = element_blank(),  # Remove major gridlines
+    panel.grid.minor = element_blank()   # Remove minor gridlines
+  )
+#dev.off()
+```
+
+## 7.6 PLS-DA Modeling for PC4
+```{r PLS-DA Modeling on PC4}
+# Get the column names of the human data that match the gene IDs
+matching_columnsPC4 <- colnames(X_valid)[which(colnames(X_valid) %in% PC4geneIDs)]
+X_valid_PC4 <- cbind(X_valid[,c(1:7)], X_valid[, matching_columnsPC4])
+
+## Cross Validation to determine the number of components for the model
+# Separate data into the specific categories (Y, disease association) and (X, dataset from genes)
+Y_PC4 <- as.character(X_valid_PC4$Condition)
+X_PC4 <- X_valid_PC4[8:ncol(X_valid_PC4)]
+
+# Compute PLSDA for 10 components (noted as plsda_draft for multiple components)
+plsda_draft_PC4 <- plsda(X_PC4, Y_PC4, ncomp = 10)
+
+# Perform a 3-fold cross-validation repeated 10 times to evaluate classification performance
+# Noted as plsda_cv for the cross-validation analysis
+plsda_cv_PC4 <- perf(plsda_draft_PC4, validation = 'Mfold', folds = 3, 
+                  progressBar = FALSE,  # Set to TRUE to track progress
+                  nrepeat = 100)
+# Plot the balanced error rate (BER) and the overall error
+plot(plsda_cv_PC4, sd = TRUE, legend.position = 'horizontal')
+
+## Plot the PLS-DA Model
+# A two-way PLS-DA was performed with 2 components
+plsda_PC4 <- plsda(X_PC4, Y_PC4, ncomp = 2)
+
+#svg('PC4-PLSDA-human.svg', width = 4, height = 4)
+# PLS-DA with LV1 and LV2
+par(pty="s")
+plotIndiv(plsda_PC4, ind.names = FALSE, legend=FALSE,
+          comp=c(1,2), ellipse = FALSE, pch=16,
+          title = "",
+          size.title = 0.1,
+          size.legend = 0.5,
+          style="graphics",
+          cex = 1.0,
+          point.lwd = 1.5,
+          X.label = 'Scores on LV1', Y.label = 'Scores on LV2',
+          col = c("red3", "royalblue3"))
+          
+          abline(h=0, lty="dotted", col="black", lwd=2)
+          abline(v=0, lty="dotted", col="black", lwd=2)
+par(pty="m")
+#dev.off()
+```
+
+```{r Loading Variables and VIP Determination for PC4,  fig.height=5.2, fig.width=10}
+# Determine the VIP values for PC4-2way 
+plsda_PC4.vip <- vip(plsda_PC4)
+
+## Loadings for Latent Variable 1
+# Pull the loadings information
+loadingsPC4 <- as.data.frame(plsda_PC4[["loadings"]][["X"]])
+# Capture the rowname list
+rownamePC4 <- rownames(loadingsPC4)
+# Remove the old dataframe's row name
+rownames(loadingsPC4) <- NULL
+# Merge the row name (as a first column) with the other loadings
+loadingsPC4 <- cbind(rownamePC4, loadingsPC4)
+# Rename the first column to Gene
+colnames(loadingsPC4)[1] <- "Gene"
+
+# Specify the desired words in the desired order
+selected_words <- c("TGFA", "RRAD", "CDK18", "ENGASE", "HDC", "CYP2D6", "C15ORF61", "PDP1", "HDX", "MICU2", "PANX1", "PTPRU", "TACC2", "PKP2", "PLIN3", "TVP23A", "SARDH", "FMO4", "CEP85L", "TIMP4")
+
+# Rearrange the rows based on selected words
+loadingsPC4 <- loadingsPC4[match(selected_words, loadingsPC4$Gene, nomatch = 0), ]
+rownames(loadingsPC4) <- NULL
+
+# Preparing factor to establish the barplot positioning in the figure across all groups
+loadingsPC4$Gene <- factor(loadingsPC4$Gene,
+                  levels = c("TIMP4", "CEP85L", "FMO4", "SARDH", "TVP23A", "PLIN3", "PKP2", "TACC2", "PTPRU", "PANX1", "MICU2", "HDX", "PDP1", "C15ORF61", "CYP2D6", "HDC", "ENGASE", "CDK18", "RRAD", "TGFA"))
+
+# Plot loadings with each variable identified with highest contribution to a specific class
+plotLoadings(plsda_PC4, comp = 1, method = 'mean', contrib = 'max')
+
+#svg('PC4-PLSDA-LV1_loadings.svg', width = 4, height = 4)
+# Plot of loadings color adjusted with fixed cytokine list
+loadingsPC4 %>%
+        ggplot(aes(x = Gene, y = comp1, fill = Gene)) +
+            geom_bar(stat = "identity", color="black", show.legend = FALSE, width = 1) +
+            scale_fill_manual(values = c("red3", "red3", "red3", "red3", "royalblue3", "royalblue3", "red3", "royalblue3", "red3", "royalblue3", "royalblue3", "red3", "royalblue3", "royalblue3", "red3", "royalblue3", "red3", "royalblue3", "royalblue3", "red3")) + 
+            coord_flip() + theme_classic() + labs(x=NULL, y="Loadings on LV1") +
+  theme(
+    panel.grid.major = element_blank(),  # Remove major gridlines
+    panel.grid.minor = element_blank()   # Remove minor gridlines
+  )
+#dev.off()
+
+## Loadings for Latent Variable 2
+# Pull the loadings information
+loadingsPC4 <- as.data.frame(plsda_PC4[["loadings"]][["X"]])
+# Capture the rowname list
+rownamePC4 <- rownames(loadingsPC4)
+# Remove the old dataframe's row name
+rownames(loadingsPC4) <- NULL
+# Merge the row name (as a first column) with the other loadings
+loadingsPC4 <- cbind(rownamePC4, loadingsPC4)
+# Rename the first column to Gene
+colnames(loadingsPC4)[1] <- "Gene"
+
+# Specify the desired words in the desired order
+selected_words <- c("SARDH", "RRAD", "PDP1", "PANX1", "TIMP4", "CDK18", "TVP23A", "PKP2", "TACC2", "C15ORF61", "PTPRU", "FMO4", "ENGASE", "MICU2", "PLIN3", "CYP2D6", "HDC", "HDX", "TGFA", "CEP85L")
+
+# Rearrange the rows based on selected words
+loadingsPC4 <- loadingsPC4[match(selected_words, loadingsPC4$Gene, nomatch = 0), ]
+rownames(loadingsPC4) <- NULL
+
+# Preparing factor to establish the barplot positioning in the figure across all groups
+loadingsPC4$Gene <- factor(loadingsPC4$Gene,
+                  levels = c("CEP85L", "TGFA", "HDX", "HDC", "CYP2D6", "PLIN3", "MICU2", "ENGASE", "FMO4", "PTPRU", "C15ORF61", "TACC2", "PKP2", "TVP23A", "CDK18", "TIMP4", "PANX1", "PDP1", "RRAD", "SARDH"))
+
+# Plot loadings with each variable identified with highest contribution to a specific class
+plotLoadings(plsda_PC4, comp = 2, method = 'mean', contrib = 'max')
+#svg('PC4-PLSDA-LV2_loadings.svg', width = 4, height = 4)
+# Plot of loadings color adjusted with fixed cytokine list
+loadingsPC4 %>%
+        ggplot(aes(x = Gene, y = comp2, fill = Gene)) +
+            geom_bar(stat = "identity", color="black", show.legend = FALSE, width = 1) +
+            scale_fill_manual(values = c("red3", "red3", "red3", "royalblue3", "red3", "royalblue3", "royalblue3", "red3", "red3", "red3", "royalblue3", "royalblue3", "red3", "royalblue3", "royalblue3", "red3", "royalblue3", "royalblue3", "royalblue3", "red3")) + 
+            coord_flip() + theme_classic() + labs(x=NULL, y="Loadings on LV2") +
+  theme(
+    panel.grid.major = element_blank(),  # Remove major gridlines
+    panel.grid.minor = element_blank()   # Remove minor gridlines
+  )
+#dev.off()
+```
+
+## 7.7 PLS-DA Modeling for PC6
+```{r PLS-DA Modeling on PC6}
+# Get the column names of the human data that match the gene IDs
+matching_columnsPC6 <- colnames(X_valid)[which(colnames(X_valid) %in% PC6geneIDs)]
+X_valid_PC6 <- cbind(X_valid[,c(1:7)], X_valid[, matching_columnsPC6])
+
+## Cross Validation to determine the number of components for the model
+# Separate data into the specific categories (Y, disease association) and (X, dataset from genes)
+Y_PC6 <- as.character(X_valid_PC6$Condition)
+X_PC6 <- X_valid_PC6[8:ncol(X_valid_PC6)]
+
+# Compute PLSDA for 10 components (noted as plsda_draft for multiple components)
+plsda_draft_PC6 <- plsda(X_PC6, Y_PC6, ncomp = 10)
+
+# Perform a 3-fold cross-validation repeated 10 times to evaluate classification performance
+# Noted as plsda_cv for the cross-validation analysis
+plsda_cv_PC6 <- perf(plsda_draft_PC6, validation = 'Mfold', folds = 3, 
+                  progressBar = FALSE,  # Set to TRUE to track progress
+                  nrepeat = 100)
+# Plot the balanced error rate (BER) and the overall error
+plot(plsda_cv_PC6, sd = TRUE, legend.position = 'horizontal')
+
+## Plot the PLS-DA Model
+# A two-way PLS-DA was performed with 2 components
+plsda_PC6 <- plsda(X_PC6, Y_PC6, ncomp = 2)
+
+#svg('PC6-PLSDA-human.svg', width = 4, height = 4)
+# PLS-DA with LV1 and LV2
+par(pty="s")
+plotIndiv(plsda_PC6, ind.names = FALSE, legend=FALSE,
+          comp=c(1,2), ellipse = FALSE, pch=16,
+          title = "",
+          size.title = 0.1,
+          size.legend = 0.5,
+          style="graphics",
+          cex = 1.0,
+          point.lwd = 1.5,
+          X.label = 'Scores on LV1', Y.label = 'Scores on LV2',
+          col = c("red3", "royalblue3"))
+          
+          abline(h=0, lty="dotted", col="black", lwd=2)
+          abline(v=0, lty="dotted", col="black", lwd=2)
+par(pty="m")
+#dev.off()
+```
+
+```{r Loading Variables and VIP Determination for PC6,  fig.height=5.2, fig.width=10}
+# Determine the VIP values for PC6-2way 
+plsda_PC6.vip <- vip(plsda_PC6)
+
+## Loadings for Latent Variable 1
+# Pull the loadings information
+loadingsPC6 <- as.data.frame(plsda_PC6[["loadings"]][["X"]])
+# Capture the rowname list
+rownamePC6 <- rownames(loadingsPC6)
+# Remove the old dataframe's row name
+rownames(loadingsPC6) <- NULL
+# Merge the row name (as a first column) with the other loadings
+loadingsPC6 <- cbind(rownamePC6, loadingsPC6)
+# Rename the first column to Gene
+colnames(loadingsPC6)[1] <- "Gene"
+
+# Specify the desired words in the desired order
+selected_words <- c("CDC42BPA", "KATNAL2", "ROBO4", "NPTX1", "CARD19", "AGBL5", "BAZ1B", "ARMH4", "APBA2", "APBB1", "LRRC4", "FUT8", "PCDH9", "CNR1", "GRIN2B", "LYRM4", "LRFN5", "MOCOS", "WDFY2", "NME5")
+
+# Rearrange the rows based on selected words
+loadingsPC6 <- loadingsPC6[match(selected_words, loadingsPC6$Gene, nomatch = 0), ]
+rownames(loadingsPC6) <- NULL
+
+# Preparing factor to establish the barplot positioning in the figure across all groups
+loadingsPC6$Gene <- factor(loadingsPC6$Gene,
+                  levels = c("NME5", "WDFY2", "MOCOS", "LRFN5", "LYRM4", "GRIN2B", "CNR1", "PCDH9", "FUT8", "LRRC4", "APBB1", "APBA2", "ARMH4", "BAZ1B", "AGBL5", "CARD19", "NPTX1", "ROBO4", "KATNAL2", "CDC42BPA"))
+
+# Plot loadings with each variable identified with highest contribution to a specific class
+plotLoadings(plsda_PC6, comp = 1, method = 'mean', contrib = 'max')
+
+#svg('PC6-PLSDA-LV1_loadings.svg', width = 4, height = 4)
+# Plot of loadings color adjusted with fixed cytokine list
+loadingsPC6 %>%
+        ggplot(aes(x = Gene, y = comp1, fill = Gene)) +
+            geom_bar(stat = "identity", color="black", show.legend = FALSE, width = 1) +
+            scale_fill_manual(values = c("red3", "red3", "red3", "royalblue3", "red3", "red3", "red3", "royalblue3", "red3", "red3", "royalblue3", "red3", "red3", "red3", "red3", "royalblue3", "red3", "red3", "royalblue3", "red3")) + 
+            coord_flip() + theme_classic() + labs(x=NULL, y="Loadings on LV1") +
+  theme(
+    panel.grid.major = element_blank(),  # Remove major gridlines
+    panel.grid.minor = element_blank()   # Remove minor gridlines
+  )
+#dev.off()
+
+## Loadings for Latent Variable 2
+# Pull the loadings information
+loadingsPC6 <- as.data.frame(plsda_PC6[["loadings"]][["X"]])
+# Capture the rowname list
+rownamePC6 <- rownames(loadingsPC6)
+# Remove the old dataframe's row name
+rownames(loadingsPC6) <- NULL
+# Merge the row name (as a first column) with the other loadings
+loadingsPC6 <- cbind(rownamePC6, loadingsPC6)
+# Rename the first column to Gene
+colnames(loadingsPC6)[1] <- "Gene"
+
+# Specify the desired words in the desired order
+selected_words <- c("GRIN2B", "CNR1", "NPTX1", "NME5", "MOCOS", "BAZ1B", "WDFY2", "LYRM4", "CARD19", "AGBL5", "APBA2", "APBB1", "KATNAL2", "LRRC4", "ARMH4", "PCDH9", "FUT8", "LRFN5", "ROBO4", "CDC42BPA")
+
+# Rearrange the rows based on selected words
+loadingsPC6 <- loadingsPC6[match(selected_words, loadingsPC6$Gene, nomatch = 0), ]
+rownames(loadingsPC6) <- NULL
+
+# Preparing factor to establish the barplot positioning in the figure across all groups
+loadingsPC6$Gene <- factor(loadingsPC6$Gene,
+                  levels = c("CDC42BPA", "ROBO4", "LRFN5", "FUT8", "PCDH9", "ARMH4", "LRRC4", "KATNAL2", "APBB1", "APBA2", "AGBL5", "CARD19", "LYRM4", "WDFY2", "BAZ1B", "MOCOS", "NME5", "NPTX1", "CNR1", "GRIN2B"))
+
+# Plot loadings with each variable identified with highest contribution to a specific class
+plotLoadings(plsda_PC6, comp = 2, method = 'mean', contrib = 'max')
+#svg('PC6-PLSDA-LV2_loadings.svg', width = 4, height = 4)
+# Plot of loadings color adjusted with fixed cytokine list
+loadingsPC6 %>%
+        ggplot(aes(x = Gene, y = comp2, fill = Gene)) +
+            geom_bar(stat = "identity", color="black", show.legend = FALSE, width = 1) +
+            scale_fill_manual(values = c("red3", "red3", "royalblue3", "red3", "royalblue3", "red3", "red3", "royalblue3", "royalblue3", "red3", "red3", "royalblue3","red3", "red3", "red3", "red3", "red3", "red3", "red3", "red3")) + 
+            coord_flip() + theme_classic() + labs(x=NULL, y="Loadings on LV2") +
+  theme(
+    panel.grid.major = element_blank(),  # Remove major gridlines
+    panel.grid.minor = element_blank()   # Remove minor gridlines
+  )
+#dev.off()
+```
+
+
+
+*** END OF SCRIPT ***
+
+
+
+
+
+
+
+
