@@ -1,0 +1,552 @@
+---
+title: "Translational Modeling of Space-Flight Mouse Models to Human Sarcopenia"
+author: "Brendan K. Ball"
+date: "2025-12-03"
+output: html_document
+---
+
+# 0. IMPORT PACKAGES
+```{r Package Import, include=FALSE, warning=FALSE}
+# Downloads and calls from the library the necessary packages needed to run the code
+# CRAN
+if(!require(stringr)) install.packages("stringr", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (stringr, verbose = FALSE))
+if(!require(gtools)) install.packages("gtools", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (gtools, verbose = FALSE))
+if(!require(dplyr)) install.packages("dplyr", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (dplyr, verbose = FALSE))
+if(!require(factoextra)) install.packages("factoextra", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (factoextra, verbose = FALSE))
+if(!require(devtools)) install.packages("devtools", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (devtools, verbose = FALSE))
+if(!require(data.table)) install.packages("data.table", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (data.table, verbose = FALSE))
+if(!require(tibble)) install.packages("tibble", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (tibble, verbose = FALSE))
+if(!require(lme4)) install.packages("lme4", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (lme4, verbose = FALSE))
+if(!require(emmeans)) install.packages("emmeans", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (emmeans, verbose = FALSE))
+if(!require(effects)) install.packages("effects", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (effects, verbose = FALSE))
+if(!require(ggforce)) install.packages("ggforce", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (ggforce, verbose = FALSE))
+if(!require(pheatmap)) install.packages("pheatmap", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (pheatmap, verbose = FALSE))
+if(!require(limma)) install.packages("limma", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (limma, verbose = FALSE))
+if(!require(umap)) install.packages("umap", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (umap, verbose = FALSE))
+if(!require(powerjoin)) install.packages("powerjoin", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (powerjoin, verbose = FALSE))
+if(!require(purrr)) install.packages("purrr", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (purrr, verbose = FALSE))
+if(!require(glmnet)) install.packages("glmnet", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (glmnet, verbose = FALSE))
+if(!require(tidyverse)) install.packages("tidyverse", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (tidyverse, verbose = FALSE))
+if(!require(openxlsx)) install.packages("openxlsx", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (openxlsx, verbose = FALSE))
+if(!require(qusage)) install.packages("qusage", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (qusage, verbose = FALSE))
+if(!require(ggpubr)) install.packages("ggpubr", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (ggpubr, verbose = FALSE))
+if(!require(umap)) install.packages("umap", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (umap, verbose = FALSE))
+if(!require(corrplot)) install.packages("corrplot", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (corrplot, verbose = FALSE))
+# Bioconductor Import
+if (!requireNamespace('BiocManager', quietly = TRUE)) install.packages('BiocManager')
+suppressWarnings(library(BiocManager, verbose = FALSE))
+if (!require("fgsea")) {BiocManager::install("fgsea")}
+suppressWarnings(library (fgsea, verbose = FALSE))
+if (!require("mixOmics")) {BiocManager::install("mixOmics")}
+suppressWarnings(library (mixOmics, verbose = FALSE))
+if (!require("clusterProfiler")) {BiocManager::install("clusterProfiler")}
+suppressWarnings(library (clusterProfiler, verbose = FALSE))
+if (!require("EnrichmentBrowser")) {BiocManager::install("EnrichmentBrowser")}
+suppressWarnings(library (EnrichmentBrowser, verbose = FALSE))
+if (!require("EnhancedVolcano")) {BiocManager::install("EnhancedVolcano")}
+suppressWarnings(library (EnhancedVolcano, verbose = FALSE))
+if (!require("GEOquery")) {BiocManager::install("GEOquery")}
+suppressWarnings(library (GEOquery, verbose = FALSE))
+if (!require("orthogene")) {BiocManager::install("orthogene")}
+suppressWarnings(library (orthogene, verbose = FALSE))
+if (!require("msigdbr")) {BiocManager::install("msigdbr")}
+suppressWarnings(library (msigdbr, verbose = FALSE))
+if(!require(org.Hs.eg.db)) install.packages("org.Hs.eg.db", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (org.Hs.eg.db, verbose = FALSE))
+```
+
+# 1. IMPORT DATA SETS
+```{r Z-Score Calculation Function}
+# Function to calculate z-score for a vector
+calc_z_score <- function(x) {
+  (x - mean(x)) / sd(x)
+}
+```
+
+```{r}
+# Version info: R 4.2.2, Biobase 2.58.0, GEOquery 2.66.0, limma 3.54.0
+################################################################
+#   Differential expression analysis with limma
+library(GEOquery)
+library(limma)
+library(umap)
+
+# load series and platform data from GEO
+
+gset <- getGEO("GSE14901", GSEMatrix =TRUE, AnnotGPL=TRUE)
+if (length(gset) > 1) idx <- grep("GPL570", attr(gset, "names")) else idx <- 1
+gset <- gset[[idx]]
+
+# make proper column names to match toptable 
+fvarLabels(gset) <- make.names(fvarLabels(gset))
+
+# group membership for all samples
+gsms <- "0101100110100011"
+sml <- strsplit(gsms, split="")[[1]]
+
+# log2 transformation
+ex <- exprs(gset)
+qx <- as.numeric(quantile(ex, c(0., 0.25, 0.5, 0.75, 0.99, 1.0), na.rm=T))
+LogC <- (qx[5] > 100) ||
+          (qx[6]-qx[1] > 50 && qx[2] > 0)
+if (LogC) { ex[which(ex <= 0)] <- NaN
+  exprs(gset) <- log2(ex) }
+
+ex <- na.omit(ex) # eliminate rows with NAs
+ex <- ex[!duplicated(ex), ]  # remove duplicates
+
+# Save the dataframe as humandat
+humandat <- as.data.frame(ex)
+humandat <- rownames_to_column(humandat, var = "ID")
+
+humandat_ID <- read.csv("GSE14901_ID.csv")
+```
+
+```{r}
+# Import the GPL201 to convert gene identifiers to symbols
+gpl570 <- GEOquery::getGEO("GPL570", AnnotGPL = TRUE)
+GPL570_conv <- Table(gpl570)
+# Select the conversion list
+GPL570_conv <- GPL570_conv[c(1,3)]
+colnames(GPL570_conv)[2] <- "GeneID"
+
+# Combine the human data with the other GeneID information
+humandat <- GPL570_conv %>% inner_join(humandat, by = 'ID', copy = TRUE)
+humandat <- humandat[!grepl("///", humandat$GeneID, fixed = TRUE), ]
+
+# Remove missing entries
+humandat <- humandat[humandat$GeneID != "", ]
+
+# Remove duplicate genes by taking the average across genes with duplicate entries
+humandat <- aggregate(humandat[, -c(1,2)], by = list(GeneID = humandat$GeneID), FUN = mean)
+
+# Move the GeneID information into the rownames
+humandat <- humandat %>% column_to_rownames(var="GeneID")
+
+# Apply log2 transform
+humandat[, 1:ncol(humandat)] <- log2(humandat[, 1:ncol(humandat)]+1)
+
+humandat <- as.matrix(humandat)
+
+# Loop through each column and apply the z-score transformation
+for (i in 1:nrow(humandat)) {
+  humandat[i,] <- calc_z_score(humandat[i,])
+}
+```
+
+```{r OSD-103 Mouse Dataset from NASA}
+# Import OSD-103 from Open Science NASA
+mousedat_unnorm <- read.csv("GLDS-103_rna_seq_Unnormalized_Counts.csv", row.names = 1)
+tbl <- as.matrix(mousedat_unnorm)
+
+# pre-filter low count genes
+# keep genes with at least 2 counts > 10
+keep <- rowSums( tbl >= 10 ) >= 2
+tbl <- tbl[keep, ]
+
+# log transform raw counts
+mousedatraw <- tbl
+# Compute the log2+1 transformation
+mousedatlog2 <- log2(mousedatraw + 1)
+mousedatlog2 <- as.matrix(mousedatlog2)
+# Z-score normalization
+mousedatnorm <- mousedatlog2
+# Loop through each column and apply the z-score transformation
+for (i in 1:nrow(mousedatnorm)) {
+  mousedatnorm[i,] <- calc_z_score(mousedatnorm[i,])
+}
+mousedatnorm <- as.data.frame(mousedatnorm)
+```
+
+# 2. DATA WRANGLING & PROCESSING
+## 2.1 Orthologous Pairs Matching & Gene List
+```{r Match Gene Pairs of Mouse and Human}
+# GENE MATCHING PREPARATION FOR HUMAN DATA
+# Prepare transpose of dataset for human
+humandat_t <- t(humandat)
+# Convert to data frame
+humandat_t <- as.data.frame(humandat_t)
+# Confirm all gene words are upper case for case sensitive intersection
+
+# Prepare transpose of dataset for mouse
+mousedat_proc_t <- t(mousedatnorm)
+# Convert to data frame
+mousedat_proc_t <- as.data.frame(mousedat_proc_t)
+
+# GENE MATCHING PREPARATION FOR MOUSE DATA
+# Orthologous pair matching using orthogene package
+# Filter and process orthologous pairs between mouse and human
+gene_mouse_df <- t(mousedat_proc_t)
+# Filter for the gene ortholog pairs between mouse and human, drop all that are not pairs
+mousedat_ortholog <- orthogene::convert_orthologs(gene_df = gene_mouse_df,
+                                        gene_input = "rownames", 
+                                        gene_output = "rownames", 
+                                        input_species = "mouse",
+                                        output_species = "human",
+                                        non121_strategy = "drop_both_species") 
+# Transpose again and prepare the processed mouse data set
+mousedat_proc_t <- t(mousedat_ortholog)
+# Convert data sets to a data frame
+mousedat_proc_t <- as.data.frame(mousedat_proc_t)
+# Confirm all gene words are upper case for case sensitive intersection
+names(mousedat_proc_t) <- toupper(names(mousedat_proc_t))
+
+# Check for NAs
+mousedat_proc_t <- mousedat_proc_t[, colSums(is.na(mousedat_proc_t)) == 0]
+humandat_t <- humandat_t[, colSums(is.na(humandat_t)) == 0]
+
+# INTERSECTION OF GENES ACROSS MOUSE & HUMAN DATA
+# Only save data that has genes that intersect between the humans and mouse
+col_extracted <- intersect(colnames(mousedat_proc_t), colnames(humandat_t))
+
+# Define the mouse and human genes that are crossed together for matching
+humandat_int <- humandat_t[,col_extracted]
+mousedat_proc_int <- mousedat_proc_t[,col_extracted]
+```
+
+```{r}
+# SUBJECT INFORMATION WITH HUMAN DATA FOR Xh GSE14901
+# Human Data Combination
+# Move the row names to be in the first column
+humandat_int <- as.data.frame(humandat_int)
+humandat_int <- tibble::rownames_to_column(humandat_int)
+colnames(humandat_int)[1] <- "SampleID"
+
+humandat_ID <- humandat_ID %>%  dplyr::select(Accession, Gender, Time)
+
+# Pull out essential information from subject data
+humandat_ID <- as.data.frame(humandat_ID)
+colnames(humandat_ID)[1] <- "SampleID"
+
+# Combine the subjectID and human data to create the X_GSE dataset
+X_humandat <- merge(humandat_ID, humandat_int, by = "SampleID")
+```
+
+```{r Conditions for OSD-103 Mouse Dataset from NASA}
+# Define the flight and ground control groups
+mousedat_label <- tibble::rownames_to_column(mousedat_proc_int)
+colnames(mousedat_label)[1] <- "Condition"
+mousedat_label$Condition[1:6] <- "FLT"
+mousedat_label$Condition[7:12] <- "GC"
+# Relabel the variable
+X_mousedat <- mousedat_label
+```
+
+# 3. DATA VISUALIZATION 
+## 3.1 Plotting the PCA Charts for Mouse Dataset
+```{r PCA of Mouse Dataset}
+# PCA OF THE MOUSE DATASET
+# Data frame for the PCA
+Xmouse_pca <- X_mousedat
+# Prepare the principal components
+Xmouse_pr <- prcomp(Xmouse_pca[c(2:ncol(Xmouse_pca))], center = TRUE, scale = FALSE)
+
+# Extract summary information including percentage of variance explained
+summary_info <- summary(Xmouse_pr)
+# Extract percentage of variance explained for each principal component
+var_exp_mouse <- summary_info$importance[2, ]*100
+# Extract principal component scores
+pcs <- as.data.frame(Xmouse_pr$x)
+# Create a data frame with PC1 and PC2 scores
+pca_df_mouse <- data.frame(PC1 = pcs[,1], PC2 = pcs[,2])
+
+# Establish Color for PCA Chart
+colors <- c("#d73027", "#4575b4")
+# Combine the PCs and the respective disease conditions
+pca_df_mouse <- cbind(pca_df_mouse, Xmouse_pca$Condition)
+colnames(pca_df_mouse)[3] <- "Condition"
+pca_df_mouse$Condition <- as.factor(pca_df_mouse$Condition)
+
+#svg('MousePCA.svg', width = 5, height = 4)
+# Plot the PCA Chart 
+ggplot(pca_df_mouse, aes(x = PC1, y = PC2, fill = Condition)) +
+  geom_point(shape = 21, size = 2, color = "black") + 
+  scale_fill_manual(values = colors) +  # Set manual color scale
+ labs(x = paste0("PC1 (", round(var_exp_mouse[1], 1), "%)"), 
+      y = paste0("PC2 (", round(var_exp_mouse[2], 1), "%)"),
+      color = "Condition") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "black") +
+  scale_color_manual(values = colors) +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        aspect.ratio = 1)
+#dev.off()
+```
+
+## 3.2 Plotting the PCA Charts for the Human Data Set
+```{r PCA of Human Data}
+# PCA OF THE HUMAN DATA
+# Only pull day 0 and 14
+X_humandat <- X_humandat[grepl("^0$|^14$", X_humandat$Time), ]
+
+# Data frame for the PCA
+humandat_pca <- X_humandat
+# Prepare the principal components
+humandat_pr <- prcomp(humandat_pca[c(4:ncol(humandat_pca))], center = TRUE, scale = FALSE)
+
+# Extract summary information including percentage of variance explained
+summary_info <- summary(humandat_pr)
+# Extract percentage of variance explained for each principal component
+var_exp_human <- summary_info$importance[2, ]*100
+# Extract principal component scores
+pcs <- as.data.frame(humandat_pr$x)
+# Create a data frame with PC1 and PC2 scores
+pca_df_human <- data.frame(PC1 = pcs[,1], PC2 = pcs[,2])
+
+# Establish Color for PCA Chart
+colors <- c("#4575b4", "#d73027")
+# Combine the PCs and the respective disease conditions
+pca_df_human <- cbind(pca_df_human, humandat_pca$Time)
+colnames(pca_df_human)[3] <- "Time"
+pca_df_human$Time <- as.factor(pca_df_human$Time)
+
+# Plot the PCA Chart 
+ggplot(pca_df_human, aes(x = PC1, y = PC2, fill = Time)) +
+  geom_point(shape = 21, size = 2, color = "black") + 
+  scale_fill_manual(values = colors) +  # Set manual color scale
+ labs(x = paste0("PC1 (", round(var_exp_human[1], 1), "%)"), 
+       y = paste0("PC2 (", round(var_exp_human[2], 1), "%)"),
+       color = "Condition") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "black") +
+  scale_color_manual(values = colors) +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        aspect.ratio = 1)
+#ggsave("humanimmob_PCA_14v0.svg", plot = humanimmob_PCA, width = 6, height = 4, units = "in")
+```
+
+# 4 CROSS-SPECIES MODELING
+## 4.1 Cumulative Variance Plot for Mouse PCs
+### 4.1.1 Variance Explained
+```{r Filtering PCs to 80% Explained Variance}
+# Q_mouse data matrix preparation 
+# Remove the identifiers and keep the genes based on each mouse data
+XmousedatTCR <- X_mousedat[c(2:ncol(X_mousedat))]
+# Take the transpose of the data frame
+XmousedatTCR_t <- t(XmousedatTCR)
+# Reset as a data frame
+XmousedatTCR_t <- as.data.frame(XmousedatTCR_t)
+# Move the row names into the first column
+XmousedatTCR_t <- tibble::rownames_to_column(XmousedatTCR_t)
+colnames(XmousedatTCR_t)[1] <- "GeneID"
+# Prepare the principal component analysis
+mouse_Qm_pr <- prcomp(XmousedatTCR_t[c(2:(ncol(XmousedatTCR_t)))], center = TRUE, scale = FALSE)
+
+# Prepare the Scree Plot for Mouse Data
+screeplot(mouse_Qm_pr, type = "l", npcs = 10, main = "Scree Plot of the 10PCs")
+abline(h = 1, col="red", lty=20)
+legend("topright", legend=c("Eigenvalue = 1"),
+       col=c("red"), lty=5, cex=0.6)
+#svg('CumVarPlot_blood12.svg', width = 4, height = 4)
+# Cumulative Variance Plot for 80% Variance
+cumVar <- cumsum(mouse_Qm_pr$sdev^2 / sum(mouse_Qm_pr$sdev^2))
+plot(cumVar[0:10], xlab = "Principle Component #", ylab = "Amount of Explained Variance", main = "Cumulative Variance Plot")
+abline(v = 7, col="blue", lty=5)
+abline(h = 0.80, col="blue", lty=5)
+legend("bottomright", legend=c("Cut-off @ PC9"),
+       col=c("blue"), lty=5, cex=0.6)
+#dev.off()
+# Using the which() command to determine the PC# greater than or equal to 80%
+print(c("Princial components at 80% variance is:", which(cumVar >= 0.80)[1]))
+PC_80_val <- as.numeric(which(cumVar >= 0.80)[1])
+
+# Collect the PCs of the mouse data set
+Q_mouse <- mouse_Qm_pr$x
+# Extract PC1 to PCs that represent 80% explained variability
+Q_mouse <-  Q_mouse[, c(1:PC_80_val)]
+
+# Keep row names as the gene identifiers
+rownames(Q_mouse) <- XmousedatTCR_t$GeneID
+# Preparation of the mouse matrix
+Q_mouse<- as.matrix(Q_mouse)
+# Rename the columns for the Q_mouse
+colnames(Q_mouse)[1] <- "PC1"
+colnames(Q_mouse)[2] <- "PC2"
+colnames(Q_mouse)[3] <- "PC3"
+colnames(Q_mouse)[4] <- "PC4"
+colnames(Q_mouse)[5] <- "PC5"
+colnames(Q_mouse)[6] <- "PC6"
+colnames(Q_mouse)[7] <- "PC7"
+```
+
+```{r Percent Variance Explained Plots, fig.width=4, fig.height=4}
+# Move the row names to be in the first column
+CumVarMousePCs <- as.data.frame(cumVar)
+CumVarMousePCs <- tibble::rownames_to_column(CumVarMousePCs)
+colnames(CumVarMousePCs)[1] <- "PC"
+# Combine the other data sets 
+CumVarMousePCs <- cbind(CumVarMousePCs, cumVar)
+# Rename the column for the different mouse groups
+colnames(CumVarMousePCs)[2] <- "CumVar"
+# Multiply by 100 to get into percent
+CumVarMousePCs[, 2] <- CumVarMousePCs[, 2] * 100
+CumVarMousePCs$PC <- as.numeric(CumVarMousePCs$PC)
+
+# Percent variance explained plot
+ggplot(CumVarMousePCs, aes(x=PC, y=CumVar)) +
+  geom_point(stat="identity", fill="#d73027", color = "black") +
+  ylab("Percent Variance Explained") +
+   coord_cartesian(ylim = c(0, 100)) +
+  scale_x_continuous(limits = c(0, 12), breaks = 1:12) +
+  theme_classic() + scale_y_continuous(expand = expansion(mult = c(0, 0.01)))+
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())
+```
+
+```{r Save Mouse Q Matrix}
+#write.csv(Q_mouse, "Q_mouse.csv", row.names = TRUE)
+```
+
+## 4.2 Translatable Components Regressiom (TransComp-R)
+```{r TransComp-R Model}
+# X_human data matrix preparation
+# Remove the identifiers and keep the genes based on each mouse data
+Xhuman_TCR <- X_humandat[c(4:ncol(X_humandat))]
+# Rename the row names as the subject ID
+rownames(Xhuman_TCR) <- X_humandat$SampleID
+# Convert the X_human data into a matrix form
+X_human <- as.matrix(Xhuman_TCR)
+
+# Matrix multiplication of the human and mouse data set
+Pm_h <- X_human %*% Q_mouse
+# Make the mouse-human matrix into a data frame
+Pm_h_DF <- as.data.frame(Pm_h)
+# Move the row names into the first column
+Pm_h_DF <- tibble::rownames_to_column(Pm_h_DF)
+colnames(Pm_h_DF)[1] <- "SampleID"
+# Make the Mouse to human TransComp-R data with human demographic information
+Mouse_Human_TCR <- X_humandat[c(1:3)] %>% inner_join(Pm_h_DF, by = 'SampleID', copy = TRUE)
+
+# Rename the condition categories into numerical values for the regression analysis
+Mouse_Human_TCR_reg <- Mouse_Human_TCR %>%
+  mutate(Time = case_when(
+    Time == "14" ~ 1,  # Replace "SA" with 1
+    Time == "0" ~ 0,  # Replace "C" with 0
+  ))
+```
+
+```{r}
+# Model with all of the principal components in a regression model
+model_list <- glm(Time ~ PC3, data = Mouse_Human_TCR_reg, family = binomial, maxit=100)
+summary(model_list)
+```
+
+## 5.2 Linear Regression Modeling
+```{r Linear Modeling Results}
+# Model with all of the principal components in a regression model
+model_list <- glm(Time ~ PC2 + PC3 + PC4 + PC6, data = Mouse_Human_TCR_reg, family = binomial, maxit=100)
+summary(model_list)
+```
+
+## 5.3 Plots of Selected Mouse PCs From TransComp-R
+```{r PC3 and PC4}
+# Create ggplot of the different PCs from TransComp-R
+g2 <- ggplot(Mouse_Human_TCR_reg, aes(x = PC3, y = PC4, color = Time)) + 
+  geom_point(size = 1.5) +
+  scale_color_manual(values = c("#4575b4","#d73027")) +
+  theme(legend.position = 'right') +
+  coord_equal() 
+
+# Factorize the Condition
+g2$data$Time <- as.factor(g2$data$Time)
+
+# Plot the figure
+g2 +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "black") +
+  theme_bw() +
+  theme(
+    panel.grid.major = element_blank(),  # Remove major gridlines
+    panel.grid.minor = element_blank(),
+    aspect.ratio = 1 # Remove minor gridlines
+  )
+#ggsave("PC4PC3_plot_14v0.svg", plot = PC4PC3_plot, width = 6, height = 4, units = "in")
+```
+
+```{r PC6 and PC4}
+# Create ggplot of the different PCs from TransComp-R
+g2 <- ggplot(Mouse_Human_TCR_reg, aes(x = PC4, y = PC6, color = Time)) + 
+  geom_point(size = 1.5) +
+  scale_color_manual(values = c("#4575b4","#d73027")) +
+  theme(legend.position = 'right') +
+  coord_equal() 
+
+# Factorize the Group
+g2$data$Time <- as.factor(g2$data$Time)
+
+# Plot the figure
+g2 +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "black") +
+  theme_bw() +
+  theme(
+    panel.grid.major = element_blank(),  # Remove major gridlines
+    panel.grid.minor = element_blank(),
+    aspect.ratio = 1 # Remove minor gridlines
+  )
+#ggsave("PC6PC4_plot_14v0.svg", plot = PC6PC4_plot, width = 6, height = 4, units = "in")
+```
+
+```{r PC6 and PC3}
+# Create ggplot of the different PCs from TransComp-R
+g2 <- ggplot(Mouse_Human_TCR_reg, aes(x = PC6, y = PC3, color = Time)) + 
+  geom_point(size = 1.5) +
+  scale_color_manual(values = c("#4575b4","#d73027")) +
+  theme(legend.position = 'right') +
+  coord_equal() 
+
+# Factorize the Group
+g2$data$Time <- as.factor(g2$data$Time)
+
+# Plot the figure
+g2 +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "black") +
+  theme_bw() +
+  theme(
+    panel.grid.major = element_blank(),  # Remove major gridlines
+    panel.grid.minor = element_blank(),
+    aspect.ratio = 1 # Remove minor gridlines
+  )
+#ggsave("PC3PC6_plot_14v0.svg", plot = PC3PC6_plot, width = 6, height = 4, units = "in")
+```
+
+```{r}
+#write.csv(Mouse_Human_TCR_reg, "Mouse_Human_TCR_reg14days.csv", row.names = FALSE)
+```
+*** END OF SCRIPT ***
+
+
+
+
+
+
+
+

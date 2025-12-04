@@ -1,0 +1,159 @@
+---
+title: "Translational Modeling of Space-Flight Mouse Models to Human Sarcopenia"
+author: "Brendan K. Ball"
+date: "2025-12-03"
+output: html_document
+---
+
+# 0. IMPORT PACKAGES
+```{r Package Import, include=FALSE, warning=FALSE}
+# Downloads and calls from the library the necessary packages needed to run the code
+# CRAN
+if(!require(stringr)) install.packages("stringr", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (stringr, verbose = FALSE))
+if(!require(gtools)) install.packages("gtools", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (gtools, verbose = FALSE))
+if(!require(dplyr)) install.packages("dplyr", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (dplyr, verbose = FALSE))
+if(!require(factoextra)) install.packages("factoextra", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (factoextra, verbose = FALSE))
+if(!require(devtools)) install.packages("devtools", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (devtools, verbose = FALSE))
+if(!require(data.table)) install.packages("data.table", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (data.table, verbose = FALSE))
+if(!require(tibble)) install.packages("tibble", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (tibble, verbose = FALSE))
+if(!require(lme4)) install.packages("lme4", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (lme4, verbose = FALSE))
+if(!require(emmeans)) install.packages("emmeans", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (emmeans, verbose = FALSE))
+if(!require(effects)) install.packages("effects", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (effects, verbose = FALSE))
+if(!require(ggforce)) install.packages("ggforce", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (ggforce, verbose = FALSE))
+if(!require(pheatmap)) install.packages("pheatmap", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (pheatmap, verbose = FALSE))
+if(!require(limma)) install.packages("limma", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (limma, verbose = FALSE))
+if(!require(umap)) install.packages("umap", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (umap, verbose = FALSE))
+if(!require(powerjoin)) install.packages("powerjoin", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (powerjoin, verbose = FALSE))
+if(!require(purrr)) install.packages("purrr", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (purrr, verbose = FALSE))
+if(!require(glmnet)) install.packages("glmnet", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (glmnet, verbose = FALSE))
+if(!require(tidyverse)) install.packages("tidyverse", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (tidyverse, verbose = FALSE))
+if(!require(openxlsx)) install.packages("openxlsx", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (openxlsx, verbose = FALSE))
+if(!require(qusage)) install.packages("qusage", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (qusage, verbose = FALSE))
+if(!require(ggpubr)) install.packages("ggpubr", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (ggpubr, verbose = FALSE))
+if(!require(umap)) install.packages("umap", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (umap, verbose = FALSE))
+if(!require(corrplot)) install.packages("corrplot", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (corrplot, verbose = FALSE))
+# Bioconductor Import
+if (!requireNamespace('BiocManager', quietly = TRUE)) install.packages('BiocManager')
+suppressWarnings(library(BiocManager, verbose = FALSE))
+if (!require("fgsea")) {BiocManager::install("fgsea")}
+suppressWarnings(library (fgsea, verbose = FALSE))
+if (!require("mixOmics")) {BiocManager::install("mixOmics")}
+suppressWarnings(library (mixOmics, verbose = FALSE))
+if (!require("clusterProfiler")) {BiocManager::install("clusterProfiler")}
+suppressWarnings(library (clusterProfiler, verbose = FALSE))
+if (!require("EnrichmentBrowser")) {BiocManager::install("EnrichmentBrowser")}
+suppressWarnings(library (EnrichmentBrowser, verbose = FALSE))
+if (!require("EnhancedVolcano")) {BiocManager::install("EnhancedVolcano")}
+suppressWarnings(library (EnhancedVolcano, verbose = FALSE))
+if (!require("GEOquery")) {BiocManager::install("GEOquery")}
+suppressWarnings(library (GEOquery, verbose = FALSE))
+if (!require("orthogene")) {BiocManager::install("orthogene")}
+suppressWarnings(library (orthogene, verbose = FALSE))
+if (!require("msigdbr")) {BiocManager::install("msigdbr")}
+suppressWarnings(library (msigdbr, verbose = FALSE))
+if(!require(org.Hs.eg.db)) install.packages("org.Hs.eg.db", repos = "http://cran.us.r-project.org")
+suppressWarnings(library (org.Hs.eg.db, verbose = FALSE))
+```
+
+# 1. IMPORT DATA FILES
+```{r Data Preparation}
+# Import files
+humandat2day <- read.csv("Mouse_Human_TCR_reg2days.csv")
+# Add date information
+humandat2day$Date <- "Day2"
+colnames(humandat2day)[2] <- "Sex"
+
+humandat14day <- read.csv("Mouse_Human_TCR_reg14days.csv")
+# Add date information
+humandat14day$Date <- "Day14"
+colnames(humandat14day)[2] <- "Sex"
+
+# Pull out necessary columns
+humandat2day <- humandat2day %>% dplyr::select(SampleID, Sex, Time, Date, PC3, PC4, PC6)
+colnames(humandat2day)[5] <- "PC3_Day2"
+colnames(humandat2day)[6] <- "PC4_Day2"
+colnames(humandat2day)[7] <- "PC6_Day2"
+
+humandat14day <- humandat14day %>% dplyr::select(SampleID, Sex, Time, Date, PC3, PC4, PC6)
+colnames(humandat14day)[5] <- "PC3_Day14"
+colnames(humandat14day)[6] <- "PC4_Day14"
+colnames(humandat14day)[7] <- "PC6_Day14"
+```
+
+# 2. DATA WRANGLING AND PLOT PREPARATION
+```{r}
+# Combine the data into new data frame
+all_dat <- dplyr::bind_rows(humandat2day, humandat14day)
+# Prepare the data
+plot_dat <- all_dat %>%
+  pivot_longer(
+    cols = c(PC3_Day2, PC4_Day2, PC6_Day2,
+             PC3_Day14, PC4_Day14, PC6_Day14),
+    names_to = "PC_Day",
+    values_to = "Value"
+  )
+# Separate the naming convention and date
+plot_dat <- plot_dat %>%
+  separate(PC_Day, into = c("PC", "Day"), sep = "_")
+# Factor the groups
+plot_dat$Group <- factor(
+  paste0(plot_dat$PC, "_", plot_dat$Day),
+  levels = c(
+    "PC3_Day2", "PC3_Day14",
+    "PC4_Day2", "PC4_Day14",
+    "PC6_Day2", "PC6_Day14"
+  )
+)
+# Factorize
+plot_dat$Time <- factor(plot_dat$Time, levels = c(0,1))
+# Remove NA values
+plot_dat <- plot_dat %>%
+  dplyr::filter(!is.na(Value), is.finite(Value))
+```
+
+# 3. BOX PLOT FOR VISUALIZATION
+```{r}
+# Plot the violin plot
+ggplot(plot_dat, aes(x = Group, y = Value, fill = Time)) +
+  geom_violin(position = position_dodge(width = 0.8), color = "black", width = 0.8, trim = FALSE) +
+  geom_boxplot(position = position_dodge(width = 0.8), width = 0.2, outlier.shape = NA, color = "black") +
+  geom_jitter(position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.8), size = 0.5, alpha = 1, color = "black") +
+  labs(x = "PCs and Dates", y = "Scores") +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    legend.position = 'right',
+    aspect.ratio = 0.3
+  ) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
+  coord_cartesian(ylim = c(-2100, 2600))
+#ggsave("allPCcomparisonplot.svg", plot = allPCcomparisonplot, width = 6, height = 4, units = "in")
+```
+
+
+
